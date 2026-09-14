@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Iniciar sesión</h1>
+<p class="lead">Acceso al panel de administración.</p>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<form method="post" action="/admin/login" class="form-grid">
+  <label class="span-2">
+    <span>Usuario</span>
+    <input type="text" name="usuario" value="{{.Usuario}}" autofocus required>
+  </label>
+  <label class="span-2">
+    <span>Contraseña</span>
+    <input type="password" name="password" required>
+  </label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary" style="width:100%;">Entrar</button>
+  </div>
+</form>
+{{end}}

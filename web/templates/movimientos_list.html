@@ -1,0 +1,134 @@
+{{define "content"}}
+<section class="page-head">
+  <div class="page-head-row">
+    <div>
+      <p class="eyebrow">Inventario</p>
+      <h1>Ingresos y consumos</h1>
+      <p class="lead">Kardex de movimientos de stock por producto.</p>
+    </div>
+    <a href="/admin/mantenimiento/inventario/reporte" class="btn btn-ghost">Ver reporte</a>
+  </div>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow">
+  <h3>Registrar movimiento</h3>
+  <form method="post" action="/admin/mantenimiento/inventario/movimientos" class="form-grid">
+    <label class="span-2">
+      <span>Producto</span>
+      <select name="producto_id" id="productoSelect" required>
+        <option value="">Selecciona…</option>
+        {{range .Productos}}
+        <option value="{{.ID}}" data-precio-venta="{{.PrecioVenta}}">{{.Nombre}} (stock: {{printf "%.0f" .Stock}})</option>
+        {{end}}
+      </select>
+    </label>
+
+    <label>
+      <span>Tipo</span>
+      <select name="tipo" id="tipoSelect" required>
+        <option value="">Selecciona…</option>
+        <option value="ingreso">Ingreso</option>
+        <option value="consumo">Consumo (egreso)</option>
+      </select>
+    </label>
+    <label>
+      <span>Cantidad</span>
+      <input type="number" step="0.01" min="0.01" name="cantidad" required>
+    </label>
+
+    <label>
+      <span>Fecha</span>
+      <input type="date" name="fecha" value="{{.Hoy}}" required>
+    </label>
+    <label class="checkbox-row" id="esVentaRow">
+      <input type="checkbox" name="es_venta" id="esVentaCheckbox" disabled>
+      <span>Es una venta</span>
+    </label>
+    <label id="precioVentaRow">
+      <span>Precio de venta</span>
+      <input type="number" step="0.01" min="0" name="precio_venta" id="precioVentaInput" disabled>
+    </label>
+
+    <label class="span-2">
+      <span>Motivo</span>
+      <input type="text" name="motivo" placeholder="Ej. Compra a proveedor, venta, merma…">
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Registrar</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  {{if .Movimientos}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th><th>Registrado</th></tr>
+    </thead>
+    <tbody>
+      {{range .Movimientos}}
+      <tr>
+        <td>{{.Fecha.Format "02/01/2006"}}</td>
+        <td class="cell-strong">{{.ProductoNombre}}</td>
+        <td>
+          {{if eq .Tipo "ingreso"}}<span class="tipo-ingreso">Ingreso</span>
+          {{else}}<span class="tipo-consumo">Consumo</span>{{if .EsVenta}} <span class="tag-venta">Venta</span>{{end}}
+          {{end}}
+        </td>
+        <td>{{printf "%.2f" .Cantidad}}</td>
+        <td>{{.Motivo}}</td>
+        <td class="cell-muted">{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay movimientos registrados.</p>
+  {{end}}
+</section>
+
+<script>
+(function () {
+  var tipoSelect = document.getElementById('tipoSelect');
+  var productoSelect = document.getElementById('productoSelect');
+  var esVentaRow = document.getElementById('esVentaRow');
+  var esVentaCheckbox = document.getElementById('esVentaCheckbox');
+  var precioVentaRow = document.getElementById('precioVentaRow');
+  var precioVentaInput = document.getElementById('precioVentaInput');
+
+  function precioDefaultProducto() {
+    var opt = productoSelect.options[productoSelect.selectedIndex];
+    return opt ? (opt.getAttribute('data-precio-venta') || '0') : '0';
+  }
+
+  function syncTipo() {
+    var esEgreso = tipoSelect.value === 'consumo';
+    esVentaCheckbox.disabled = !esEgreso;
+    esVentaCheckbox.checked = esEgreso;
+    esVentaRow.classList.toggle('checkbox-row-disabled', !esEgreso);
+    syncPrecio();
+  }
+
+  function syncPrecio() {
+    var activo = !esVentaCheckbox.disabled && esVentaCheckbox.checked;
+    precioVentaInput.disabled = !activo;
+    precioVentaRow.classList.toggle('checkbox-row-disabled', !activo);
+    if (activo) {
+      precioVentaInput.value = precioDefaultProducto();
+    } else {
+      precioVentaInput.value = '';
+    }
+  }
+
+  tipoSelect.addEventListener('change', syncTipo);
+  esVentaCheckbox.addEventListener('change', syncPrecio);
+  productoSelect.addEventListener('change', syncPrecio);
+  syncTipo();
+})();
+</script>
+{{end}}

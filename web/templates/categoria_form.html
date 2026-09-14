@@ -1,0 +1,23 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Inventario</p>
+  <h1>Editar categoría</h1>
+</section>
+
+<section class="panel panel-narrow">
+  <form method="post" action="/admin/mantenimiento/inventario/categorias/{{.Categoria.ID}}/editar" class="form-grid">
+    <label class="span-2">
+      <span>Nombre</span>
+      <input type="text" name="nombre" value="{{.Categoria.Nombre}}" required>
+    </label>
+    <label class="span-2">
+      <span>Descripción</span>
+      <input type="text" name="descripcion" value="{{.Categoria.Descripcion}}">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      <a href="/admin/mantenimiento/inventario/categorias" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{end}}

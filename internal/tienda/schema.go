@@ -1,0 +1,71 @@
+package tienda
+
+import (
+	"database/sql"
+	"fmt"
+)
+
+const schema = `
+CREATE TABLE IF NOT EXISTS pedidos (
+	id                SERIAL PRIMARY KEY,
+	cliente_nombre    VARCHAR(150) NOT NULL,
+	cliente_telefono  VARCHAR(50)  NOT NULL,
+	cliente_email     VARCHAR(150) NOT NULL DEFAULT '',
+	cliente_nit       VARCHAR(20)  NOT NULL DEFAULT 'CF',
+	metodo_entrega    VARCHAR(20)  NOT NULL CHECK (metodo_entrega IN ('recoger', 'domicilio')),
+	direccion_entrega VARCHAR(255) NOT NULL DEFAULT '',
+	notas             VARCHAR(500) NOT NULL DEFAULT '',
+	estado            VARCHAR(20)  NOT NULL DEFAULT 'pagado',
+	total             NUMERIC(12,2) NOT NULL,
+	creado_en         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS pedido_items (
+	id               SERIAL PRIMARY KEY,
+	pedido_id        INTEGER NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+	producto_id      INTEGER NOT NULL REFERENCES productos(id),
+	nombre_producto  VARCHAR(150) NOT NULL,
+	cantidad         NUMERIC(12,2) NOT NULL CHECK (cantidad > 0),
+	precio_unitario  NUMERIC(12,2) NOT NULL,
+	subtotal         NUMERIC(12,2) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido ON pedido_items(pedido_id);
+
+CREATE TABLE IF NOT EXISTS pagos (
+	id               SERIAL PRIMARY KEY,
+	pedido_id        INTEGER REFERENCES pedidos(id) ON DELETE CASCADE,
+	metodo           VARCHAR(30)  NOT NULL DEFAULT 'tarjeta',
+	monto            NUMERIC(12,2) NOT NULL,
+	estado           VARCHAR(20)  NOT NULL CHECK (estado IN ('aprobado', 'rechazado', 'fallo')),
+	referencia       VARCHAR(60)  NOT NULL,
+	tarjeta_marca    VARCHAR(20)  NOT NULL DEFAULT '',
+	tarjeta_ultimos4 VARCHAR(4)   NOT NULL DEFAULT '',
+	motivo_rechazo   VARCHAR(255) NOT NULL DEFAULT '',
+	creado_en        TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pagos_pedido ON pagos(pedido_id);
+`
+
+// alteraciones para bases creadas antes de que pagos.pedido_id pudiera ser
+// nulo (un intento rechazado o con falla técnica no tiene pedido asociado)
+// y antes de que 'fallo' existiera como estado. Ambas son idempotentes.
+const alterPagos = `
+ALTER TABLE pagos ALTER COLUMN pedido_id DROP NOT NULL;
+ALTER TABLE pagos DROP CONSTRAINT IF EXISTS pagos_estado_check;
+ALTER TABLE pagos ADD CONSTRAINT pagos_estado_check CHECK (estado IN ('aprobado', 'rechazado', 'fallo'));
+`
+
+// Migrate crea las tablas de pedidos si todavía no existen, y actualiza el
+// esquema de pagos en instalaciones creadas antes de la pasarela simulada.
+// Idempotente.
+func Migrate(conn *sql.DB) error {
+	if _, err := conn.Exec(schema); err != nil {
+		return fmt.Errorf("migrando esquema de tienda: %w", err)
+	}
+	if _, err := conn.Exec(alterPagos); err != nil {
+		return fmt.Errorf("actualizando esquema de pagos: %w", err)
+	}
+	return nil
+}

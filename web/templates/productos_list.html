@@ -1,0 +1,196 @@
+{{define "content"}}
+<section class="page-head">
+  <div class="page-head-row">
+    <div>
+      <p class="eyebrow">Inventario</p>
+      <h1>Productos</h1>
+      <p class="lead">Catálogo con precios y stock actual.</p>
+    </div>
+    <a href="/admin/mantenimiento/inventario/productos/nuevo" class="btn btn-primary">+ Nuevo producto</a>
+  </div>
+</section>
+
+{{if .Productos}}
+<section class="filters-bar">
+  <div class="filter-categorias" id="categoriaFiltro">
+    <button type="button" class="filter-dropdown-btn" id="catFiltroBtn">
+      Categorías <span id="catFiltroCount" class="filter-count"></span>
+      <span class="filter-caret">▾</span>
+    </button>
+    <div class="filter-dropdown-panel" id="catFiltroPanel" hidden>
+      <button type="button" class="filter-dropdown-action" data-action="all">Seleccionar todas las categorías</button>
+      <button type="button" class="filter-dropdown-action" data-action="none">Deseleccionar todas las categorías</button>
+      <div class="filter-dropdown-list">
+        {{range .Categorias}}
+        <label class="filter-checkbox-row">
+          <input type="checkbox" class="cat-filter-checkbox" value="{{.ID}}" checked>
+          <span>{{.Nombre}}</span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  <input type="search" id="textoFiltro" class="filter-text-input"
+         placeholder='Buscar por nombre o descripción… ej. 10&quot; x 8&quot;'>
+</section>
+{{end}}
+
+<section class="panel">
+  {{if .Productos}}
+  <table class="data-table" id="productosTable">
+    <thead>
+      <tr><th></th><th>Nombre</th><th>Categoría</th><th>Compra</th><th>Venta</th><th>Stock</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Productos}}
+      <tr data-categoria-id="{{.CategoriaID}}" data-producto-id="{{.ID}}" data-search="{{.Nombre}} {{.Descripcion}}">
+        <td>
+          {{if gt (len .Fotos) 1}}
+          <div class="thumb-hover-wrap">
+            <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="">
+            <div class="thumb-gallery-popover">
+              {{range .Fotos}}
+              <img src="/media/productos/{{.}}" alt="">
+              {{end}}
+            </div>
+          </div>
+          {{else if .FotoPortada}}
+          <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="">
+          {{else}}
+          <span class="thumb thumb-empty">🧵</span>
+          {{end}}
+        </td>
+        <td class="cell-strong">{{.Nombre}}{{if not .Activo}} <span class="tag-inactivo">inactivo</span>{{end}}</td>
+        <td>{{.CategoriaNombre}}</td>
+        <td>Q {{printf "%.2f" .PrecioCompra}}</td>
+        <td>Q {{printf "%.2f" .PrecioVenta}}</td>
+        <td><span class="stock-badge{{if lt .Stock 1.0}} low{{end}}">{{printf "%.0f" .Stock}}</span></td>
+        <td class="cell-actions">
+          <button type="button" class="link-action mov-toggle" data-producto-id="{{.ID}}">Movimientos</button>
+          <a href="/admin/mantenimiento/inventario/productos/{{.ID}}/editar" class="link-action">Editar</a>
+          <form method="post" action="/admin/mantenimiento/inventario/productos/{{.ID}}/eliminar"
+                onsubmit="return confirm('¿Eliminar {{.Nombre}}?');">
+            <button type="submit" class="link-action link-danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      <tr class="mov-row" data-producto-id="{{.ID}}" hidden>
+        <td colspan="7"><div class="mov-panel"></div></td>
+      </tr>
+      {{end}}
+      <tr id="sinResultados" hidden>
+        <td colspan="7" class="empty-hint">Ningún producto coincide con los filtros.</td>
+      </tr>
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay productos.</p>
+  {{end}}
+</section>
+
+{{if .Productos}}
+<script>
+(function () {
+  var table = document.getElementById('productosTable');
+  var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-categoria-id]'));
+  var textInput = document.getElementById('textoFiltro');
+  var catCheckboxes = Array.prototype.slice.call(document.querySelectorAll('.cat-filter-checkbox'));
+  var catBtn = document.getElementById('catFiltroBtn');
+  var catPanel = document.getElementById('catFiltroPanel');
+  var catCount = document.getElementById('catFiltroCount');
+  var catWrap = document.getElementById('categoriaFiltro');
+  var sinResultados = document.getElementById('sinResultados');
+
+  function movRowFor(productoId) {
+    return table.querySelector('.mov-row[data-producto-id="' + productoId + '"]');
+  }
+
+  function categoriasActivas() {
+    var activas = {};
+    catCheckboxes.forEach(function (cb) {
+      if (cb.checked) activas[cb.value] = true;
+    });
+    return activas;
+  }
+
+  function applyFilters() {
+    var texto = textInput.value.trim().toLowerCase();
+    var activas = categoriasActivas();
+    var visibles = 0;
+
+    rows.forEach(function (row) {
+      var matchCategoria = !!activas[row.dataset.categoriaId];
+      var matchTexto = texto === '' || row.dataset.search.toLowerCase().indexOf(texto) !== -1;
+      var visible = matchCategoria && matchTexto;
+      row.hidden = !visible;
+      if (visible) visibles++;
+
+      // Si el producto queda oculto por el filtro, colapsa también su
+      // panel de movimientos (si estaba abierto) para no dejarlo huérfano.
+      if (!visible) {
+        var movRow = movRowFor(row.dataset.productoId);
+        if (movRow) movRow.hidden = true;
+      }
+    });
+
+    sinResultados.hidden = visibles !== 0;
+
+    var total = catCheckboxes.length;
+    var activos = Object.keys(activas).length;
+    catCount.textContent = '(' + activos + '/' + total + ')';
+  }
+
+  textInput.addEventListener('input', applyFilters);
+  catCheckboxes.forEach(function (cb) {
+    cb.addEventListener('change', applyFilters);
+  });
+
+  catPanel.addEventListener('click', function (e) {
+    var action = e.target.getAttribute('data-action');
+    if (action === 'all') {
+      catCheckboxes.forEach(function (cb) { cb.checked = true; });
+      applyFilters();
+    } else if (action === 'none') {
+      catCheckboxes.forEach(function (cb) { cb.checked = false; });
+      applyFilters();
+    }
+  });
+
+  catBtn.addEventListener('click', function () {
+    catPanel.hidden = !catPanel.hidden;
+  });
+  document.addEventListener('click', function (e) {
+    if (!catWrap.contains(e.target)) {
+      catPanel.hidden = true;
+    }
+  });
+
+  Array.prototype.slice.call(document.querySelectorAll('.mov-toggle')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-producto-id');
+      var movRow = movRowFor(id);
+      if (!movRow) return;
+
+      movRow.hidden = !movRow.hidden;
+      if (movRow.hidden) return;
+
+      var panel = movRow.querySelector('.mov-panel');
+      panel.innerHTML = '<p class="empty-hint">Cargando…</p>';
+      fetch('/admin/mantenimiento/inventario/productos/' + id + '/movimientos')
+        .then(function (r) {
+          if (!r.ok) throw new Error('respuesta no válida');
+          return r.text();
+        })
+        .then(function (html) { panel.innerHTML = html; })
+        .catch(function () {
+          panel.innerHTML = '<p class="alert alert-error">No se pudo cargar el historial.</p>';
+        });
+    });
+  });
+
+  applyFilters();
+})();
+</script>
+{{end}}
+{{end}}

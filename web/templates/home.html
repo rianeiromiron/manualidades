@@ -1,0 +1,62 @@
+{{define "content"}}
+<section class="hero">
+  <p class="eyebrow">Panel de administración</p>
+  <h1>Todo lo que hace funcionar la tienda</h1>
+  <p class="lead">Aquí vive la configuración: dónde se guardan los datos, qué se
+    vende, y la identidad del sitio público.</p>
+</section>
+
+<section class="card-grid">
+  {{if index .ModulosVisibles "bd"}}
+  <a class="card" href="/admin/mantenimiento/bd">
+    <span class="card-icon">🗄️</span>
+    <h2>Base de datos</h2>
+    <p>Host, puerto, usuario y contraseña de Postgres. Lo único que cambia
+      al pasar a producción.</p>
+    <span class="card-cta">Configurar →</span>
+  </a>
+  {{end}}
+
+  {{if index .ModulosVisibles "inventario"}}
+  <a class="card" href="/admin/mantenimiento/inventario">
+    <span class="card-icon">🧵</span>
+    <h2>Inventario</h2>
+    <p>Categorías, productos, fotografías, ingresos y consumos de stock.</p>
+    <span class="card-cta">Configurar →</span>
+  </a>
+  {{end}}
+
+  {{if index .ModulosVisibles "sitio"}}
+  <a class="card" href="/admin/sitio">
+    <span class="card-icon">🎨</span>
+    <h2>Sitio web</h2>
+    <p>Nombre del negocio, contacto, redes sociales, logo y colores de la
+      tienda pública.</p>
+    <span class="card-cta">Configurar →</span>
+  </a>
+  {{end}}
+
+  {{if index .ModulosVisibles "pedidos"}}
+  <a class="card" href="/admin/pedidos">
+    <span class="card-icon">🛍️</span>
+    <h2>Pedidos</h2>
+    <p>Ventas realizadas desde la tienda pública.</p>
+    <span class="card-cta">Ver pedidos →</span>
+  </a>
+  {{end}}
+
+  {{if eq .CurrentRol "admin"}}
+  <a class="card" href="/admin/usuarios">
+    <span class="card-icon">🔑</span>
+    <h2>Usuarios</h2>
+    <p>Da de alta superusuarios o usuarios administrativos y elige qué
+      módulos puede ver cada uno.</p>
+    <span class="card-cta">Configurar →</span>
+  </a>
+  {{end}}
+</section>
+
+{{if and (not (index .ModulosVisibles "bd")) (not (index .ModulosVisibles "inventario")) (not (index .ModulosVisibles "sitio")) (not (index .ModulosVisibles "pedidos")) (ne .CurrentRol "admin")}}
+<p class="empty-hint">No tienes módulos asignados todavía. Pide al administrador que te dé acceso.</p>
+{{end}}
+{{end}}

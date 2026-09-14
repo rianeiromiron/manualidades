@@ -1,0 +1,37 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Mantenimiento 2</p>
+  <h1>Inventario</h1>
+  <p class="lead">Categorías, productos con fotografías, ingresos y consumos de stock.</p>
+</section>
+
+<section class="card-grid">
+  <a class="card" href="/admin/mantenimiento/inventario/categorias">
+    <span class="card-icon">🏷️</span>
+    <h2>Categorías</h2>
+    <p>Agrupan los productos del catálogo.</p>
+    <span class="card-cta">Administrar →</span>
+  </a>
+
+  <a class="card" href="/admin/mantenimiento/inventario/productos">
+    <span class="card-icon">🧶</span>
+    <h2>Productos</h2>
+    <p>Descripción, precios de compra/venta y fotografías por producto.</p>
+    <span class="card-cta">Administrar →</span>
+  </a>
+
+  <a class="card" href="/admin/mantenimiento/inventario/movimientos">
+    <span class="card-icon">📦</span>
+    <h2>Ingresos y consumos</h2>
+    <p>Kardex de movimientos de stock por producto.</p>
+    <span class="card-cta">Administrar →</span>
+  </a>
+
+  <a class="card" href="/admin/mantenimiento/inventario/reporte">
+    <span class="card-icon">📊</span>
+    <h2>Reporte</h2>
+    <p>Ingresos y egresos por rango de fechas, con filtro de solo ventas.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+</section>
+{{end}}

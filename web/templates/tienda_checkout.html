@@ -1,0 +1,185 @@
+{{define "content"}}
+<section class="t-hero" style="padding-top:10px;">
+  <h1>Checkout</h1>
+</section>
+
+<div id="tCheckoutVacio" class="t-empty" hidden>
+  <p>Tu carrito está vacío.</p>
+  <a href="/" class="t-btn t-btn-primary">Ver catálogo</a>
+</div>
+
+<div id="tCheckoutContenido" style="display:grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items:start;" hidden>
+  <form id="tFormCheckout" class="t-form-grid">
+    <label class="span-2">
+      <span>Nombre completo</span>
+      <input type="text" name="cliente_nombre" required>
+    </label>
+    <label>
+      <span>Teléfono</span>
+      <input type="text" name="cliente_telefono" required>
+    </label>
+    <label>
+      <span>Email (opcional)</span>
+      <input type="email" name="cliente_email">
+    </label>
+    <label>
+      <span>NIT (opcional)</span>
+      <input type="text" name="cliente_nit" placeholder="CF">
+    </label>
+
+    <div class="t-entrega-opciones">
+      <label><input type="radio" name="metodo_entrega" value="recoger" checked> Recoger en tienda</label>
+      <label><input type="radio" name="metodo_entrega" value="domicilio"> Entrega a domicilio</label>
+    </div>
+
+    <label class="span-2" id="tDireccionRow" hidden>
+      <span>Dirección de entrega</span>
+      <input type="text" name="direccion_entrega">
+    </label>
+
+    <label class="span-2">
+      <span>Notas (opcional)</span>
+      <textarea name="notas" rows="2"></textarea>
+    </label>
+
+    <div class="span-2" style="margin-top:8px;">
+      <h3 style="margin:0 0 4px;">Datos de tarjeta</h3>
+      <p style="margin:0 0 12px; opacity:0.7; font-size:0.9rem;">Pago simulado — no se procesa ningún cobro real.</p>
+    </div>
+    <label class="span-2">
+      <span>Número de tarjeta</span>
+      <input type="text" name="tarjeta_numero" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="4111 1111 1111 1111" required>
+    </label>
+    <label class="span-2">
+      <span>Nombre del titular</span>
+      <input type="text" name="tarjeta_titular" autocomplete="cc-name" required>
+    </label>
+    <label>
+      <span>Expiración (MM/AA)</span>
+      <input type="text" name="tarjeta_expiracion" autocomplete="cc-exp" maxlength="5" placeholder="12/28" required>
+    </label>
+    <label>
+      <span>CVV</span>
+      <input type="text" name="tarjeta_cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" required>
+    </label>
+
+    <div id="tCheckoutError" class="alert alert-error" hidden style="grid-column:span 2;"></div>
+
+    <div class="span-2">
+      <button type="submit" class="t-btn t-btn-primary t-btn-block" id="tPagarBtn">Pagar</button>
+    </div>
+  </form>
+
+  <div class="t-resumen">
+    <h3>Resumen</h3>
+    <table class="t-resumen-tabla">
+      <thead>
+        <tr><th>Producto</th><th class="num">Cant.</th><th class="num">Subtotal</th></tr>
+      </thead>
+      <tbody id="tResumenLineas"></tbody>
+    </table>
+    <div class="t-resumen-total">
+      <span>Total</span>
+      <span id="tResumenTotal">Q 0.00</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var items = Carrito.obtener();
+  var vacio = document.getElementById('tCheckoutVacio');
+  var contenido = document.getElementById('tCheckoutContenido');
+
+  if (items.length === 0) {
+    vacio.hidden = false;
+    contenido.hidden = true;
+    return;
+  }
+  vacio.hidden = true;
+  contenido.hidden = false;
+
+  var lineasEl = document.getElementById('tResumenLineas');
+  items.forEach(function (item) {
+    var tr = document.createElement('tr');
+    var tdNombre = document.createElement('td');
+    tdNombre.textContent = item.nombre;
+    var tdCantidad = document.createElement('td');
+    tdCantidad.className = 'num';
+    tdCantidad.textContent = item.cantidad;
+    var tdSubtotal = document.createElement('td');
+    tdSubtotal.className = 'num';
+    tdSubtotal.textContent = 'Q ' + (item.cantidad * item.precio).toFixed(2);
+    tr.appendChild(tdNombre);
+    tr.appendChild(tdCantidad);
+    tr.appendChild(tdSubtotal);
+    lineasEl.appendChild(tr);
+  });
+  document.getElementById('tResumenTotal').textContent = 'Q ' + Carrito.totalPrecio(items).toFixed(2);
+
+  var radios = document.querySelectorAll('input[name="metodo_entrega"]');
+  var direccionRow = document.getElementById('tDireccionRow');
+  var direccionInput = direccionRow.querySelector('input');
+  function syncEntrega() {
+    var domicilio = document.querySelector('input[name="metodo_entrega"]:checked').value === 'domicilio';
+    direccionRow.hidden = !domicilio;
+    direccionInput.required = domicilio;
+  }
+  radios.forEach(function (r) { r.addEventListener('change', syncEntrega); });
+  syncEntrega();
+
+  var form = document.getElementById('tFormCheckout');
+  var errorBox = document.getElementById('tCheckoutError');
+  var btn = document.getElementById('tPagarBtn');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errorBox.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Procesando…';
+
+    var fd = new FormData(form);
+    var payload = {
+      cliente_nombre: fd.get('cliente_nombre'),
+      cliente_telefono: fd.get('cliente_telefono'),
+      cliente_email: fd.get('cliente_email'),
+      cliente_nit: fd.get('cliente_nit'),
+      metodo_entrega: fd.get('metodo_entrega'),
+      direccion_entrega: fd.get('direccion_entrega') || '',
+      notas: fd.get('notas') || '',
+      tarjeta_numero: fd.get('tarjeta_numero'),
+      tarjeta_titular: fd.get('tarjeta_titular'),
+      tarjeta_expiracion: fd.get('tarjeta_expiracion'),
+      tarjeta_cvv: fd.get('tarjeta_cvv'),
+      items: Carrito.obtener().map(function (i) {
+        return { producto_id: i.productoId, cantidad: i.cantidad };
+      })
+    };
+
+    fetch('/checkout/confirmar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+      .then(function (res) {
+        if (res.data.ok) {
+          Carrito.vaciar();
+          window.location.href = '/pedido/' + res.data.pedido_id + '/confirmacion';
+        } else {
+          errorBox.textContent = res.data.error || 'No se pudo procesar el pedido.';
+          errorBox.hidden = false;
+          btn.disabled = false;
+          btn.textContent = 'Pagar';
+        }
+      })
+      .catch(function () {
+        errorBox.textContent = 'No se pudo conectar con el servidor.';
+        errorBox.hidden = false;
+        btn.disabled = false;
+        btn.textContent = 'Pagar';
+      });
+  });
+})();
+</script>
+{{end}}

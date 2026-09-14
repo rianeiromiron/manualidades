@@ -1,0 +1,55 @@
+{{define "layout_tienda"}}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Sitio.NombreNegocio}}{{if .Title}} · {{.Title}}{{end}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:opsz,wght@5..1200,500;5..1200,600;5..1200,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/tienda.css">
+  <script src="/static/js/carrito.js"></script>
+  <style>
+    :root {
+      --t-fondo: {{.Sitio.ColorFondo}};
+      --t-texto: {{.Sitio.ColorTexto}};
+      --t-marco: {{.Sitio.ColorMarco}};
+      --t-acento: {{.Sitio.ColorAcento}};
+    }
+  </style>
+</head>
+<body>
+  <header class="t-header">
+    <a class="t-brand" href="/">
+      {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.Sitio.NombreNegocio}}" class="t-logo">{{end}}
+      <span class="t-brand-name">{{.Sitio.NombreNegocio}}</span>
+    </a>
+    <nav class="t-nav">
+      <a href="/">Inicio</a>
+      <a href="/carrito" class="t-cart-link">Carrito <span id="tCartCount" class="t-cart-count" hidden>0</span></a>
+    </nav>
+  </header>
+
+  <main class="t-page">
+    {{template "content" .}}
+  </main>
+
+  <footer class="t-footer">
+    <div class="t-footer-grid">
+      <div>
+        <p class="t-footer-title">{{.Sitio.NombreNegocio}}</p>
+        {{if .Sitio.Direccion}}<p>{{.Sitio.Direccion}}</p>{{end}}
+        {{if .Sitio.Telefono}}<p>Tel: {{.Sitio.Telefono}}</p>{{end}}
+        {{if .Sitio.Email}}<p>{{.Sitio.Email}}</p>{{end}}
+      </div>
+      <div class="t-footer-social">
+        {{if .Sitio.FacebookURL}}<a href="{{.Sitio.FacebookURL}}" target="_blank" rel="noopener">Facebook</a>{{end}}
+        {{if .Sitio.InstagramURL}}<a href="{{.Sitio.InstagramURL}}" target="_blank" rel="noopener">Instagram</a>{{end}}
+        {{if .Sitio.WhatsappNumero}}<a href="https://wa.me/{{.Sitio.WhatsappNumero}}" target="_blank" rel="noopener">WhatsApp</a>{{end}}
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
+{{end}}

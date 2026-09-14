@@ -1,0 +1,51 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Inventario</p>
+  <h1>Categorías</h1>
+  <p class="lead">Agrupan los productos del catálogo.</p>
+</section>
+
+<section class="panel">
+  {{if .Categorias}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Nombre</th><th>Descripción</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Categorias}}
+      <tr>
+        <td class="cell-strong">{{.Nombre}}</td>
+        <td>{{.Descripcion}}</td>
+        <td class="cell-actions">
+          <a href="/admin/mantenimiento/inventario/categorias/{{.ID}}/editar" class="link-action">Editar</a>
+          <form method="post" action="/admin/mantenimiento/inventario/categorias/{{.ID}}/eliminar"
+                onsubmit="return confirm('¿Eliminar la categoría {{.Nombre}}?');">
+            <button type="submit" class="link-action link-danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay categorías. Crea la primera abajo.</p>
+  {{end}}
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Nueva categoría</h3>
+  <form method="post" action="/admin/mantenimiento/inventario/categorias" class="form-grid">
+    <label class="span-2">
+      <span>Nombre</span>
+      <input type="text" name="nombre" placeholder="Ej. Tejidos" required>
+    </label>
+    <label class="span-2">
+      <span>Descripción</span>
+      <input type="text" name="descripcion" placeholder="Opcional">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Crear categoría</button>
+    </div>
+  </form>
+</section>
+{{end}}

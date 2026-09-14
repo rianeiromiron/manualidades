@@ -1,0 +1,65 @@
+{{define "content"}}
+<section class="page-head">
+  <div class="page-head-row">
+    <div>
+      <p class="eyebrow">Usuarios</p>
+      <h1>Usuarios del sistema</h1>
+      <p class="lead">Superusuarios ven todo el panel salvo esta pantalla; los
+        usuarios administrativos solo ven los módulos que les asignes aquí.</p>
+    </div>
+    <a href="/admin/usuarios/nuevo" class="btn btn-primary">+ Nuevo usuario</a>
+  </div>
+</section>
+
+<section class="panel">
+  {{if .Usuarios}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Usuario</th><th>Rol</th><th>Módulos</th><th>Estado</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Usuarios}}
+      <tr>
+        <td class="cell-strong">{{.Usuario}}</td>
+        <td>{{if eq .Rol "superusuario"}}Superusuario{{else}}Administrativo{{end}}</td>
+        <td>
+          {{if eq .Rol "superusuario"}}
+          <span class="chip">Todos</span>
+          {{else if .ModulosNombres}}
+          {{range .ModulosNombres}}<span class="chip">{{.}}</span>{{end}}
+          {{else}}
+          <span class="empty-hint">Ninguno todavía</span>
+          {{end}}
+        </td>
+        <td>
+          {{if .Activo}}
+          <span class="estado-badge estado-entregado">Activo</span>
+          {{else}}
+          <span class="estado-badge estado-cancelado">Inactivo</span>
+          {{end}}
+        </td>
+        <td class="cell-actions">
+          <a href="/admin/usuarios/{{.ID}}/editar" class="link-action">Editar</a>
+          {{if .Activo}}
+          <form method="post" action="/admin/usuarios/{{.ID}}/desactivar">
+            <button type="submit" class="link-action">Desactivar</button>
+          </form>
+          {{else}}
+          <form method="post" action="/admin/usuarios/{{.ID}}/activar">
+            <button type="submit" class="link-action">Activar</button>
+          </form>
+          {{end}}
+          <form method="post" action="/admin/usuarios/{{.ID}}/eliminar"
+                onsubmit="return confirm('¿Eliminar al usuario {{.Usuario}}? Esto no se puede deshacer.');">
+            <button type="submit" class="link-action link-danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay usuarios. Crea el primero arriba.</p>
+  {{end}}
+</section>
+{{end}}

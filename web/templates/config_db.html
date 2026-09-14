@@ -1,0 +1,59 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Mantenimiento 1</p>
+  <h1>Conexión a la base de datos</h1>
+  <p class="lead">Estos son los únicos parámetros que hay que tocar al pasar
+    de tu Postgres local en Docker a un servidor de producción.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel">
+  <form method="post" action="/admin/mantenimiento/bd" class="form-grid">
+    <label>
+      <span>Host</span>
+      <input type="text" name="host" value="{{.Config.Host}}" placeholder="localhost" required>
+    </label>
+    <label>
+      <span>Puerto</span>
+      <input type="number" name="port" value="{{.Config.Port}}" placeholder="5432" required>
+    </label>
+    <label>
+      <span>Usuario</span>
+      <input type="text" name="user" value="{{.Config.User}}" placeholder="postgres" required>
+    </label>
+    <label>
+      <span>Contraseña</span>
+      <input type="password" name="password" value="{{.Config.Password}}" placeholder="••••••••">
+    </label>
+    <label>
+      <span>Nombre de la base de datos</span>
+      <input type="text" name="dbname" value="{{.Config.DBName}}" placeholder="manualidades" required>
+    </label>
+    <label>
+      <span>SSL Mode</span>
+      <select name="sslmode">
+        <option value="disable" {{if eq .Config.SSLMode "disable"}}selected{{end}}>disable (local/Docker)</option>
+        <option value="require" {{if eq .Config.SSLMode "require"}}selected{{end}}>require (producción)</option>
+        <option value="verify-full" {{if eq .Config.SSLMode "verify-full"}}selected{{end}}>verify-full</option>
+      </select>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" name="action" value="save" class="btn btn-primary">Guardar y probar conexión</button>
+      <button type="submit" name="action" value="create" class="btn btn-ghost">Crear base de datos si no existe</button>
+    </div>
+  </form>
+</section>
+
+<section class="hint-card">
+  <h3>Valores de tu contenedor Docker local</h3>
+  <p>Según el <code>docker inspect</code> del contenedor <code>db-1</code>: host
+    <code>localhost</code>, puerto <code>5432</code>, usuario <code>postgres</code>.
+    El contenedor arrancó con la base <code>gestion_documentos</code> (de otro proyecto);
+    para manualidades se recomienda usar una base separada, por ejemplo
+    <code>manualidades</code>, y crearla con el botón de arriba.</p>
+</section>
+{{end}}

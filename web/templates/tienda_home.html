@@ -1,0 +1,138 @@
+{{define "content"}}
+<section class="t-hero">
+  <h1>{{.Sitio.NombreNegocio}}</h1>
+  <p>Piezas hechas a mano, con cariño y detalle en cada una.</p>
+</section>
+
+{{if .Productos}}
+<div class="t-filtro-wrap">
+  <div class="t-filtro-categorias" id="tFiltroCategorias">
+    <button type="button" class="t-filtro-btn" id="tFiltroBtn">
+      Categorías <span id="tFiltroCount" class="t-filtro-count"></span>
+      <span class="t-filtro-caret">▾</span>
+    </button>
+    <div class="t-filtro-panel" id="tFiltroPanel" hidden>
+      <button type="button" class="t-filtro-accion" data-action="all">Seleccionar todas</button>
+      <button type="button" class="t-filtro-accion" data-action="none">Deseleccionar todas</button>
+      <div class="t-filtro-lista">
+        {{range .Categorias}}
+        <label class="t-filtro-check-row">
+          <input type="checkbox" class="t-cat-checkbox" value="{{.ID}}" checked>
+          <span>{{.Nombre}}</span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="t-grid" id="tGrid">
+  {{range .Productos}}
+  <div class="t-card" data-categoria-id="{{.CategoriaID}}">
+    <div class="t-card-thumb-outer">
+      <a class="t-card-thumb-wrap" href="/producto/{{.ID}}">
+        {{if .FotoPortada}}
+        <img src="/media/productos/{{.FotoPortada}}" alt="{{.Nombre}}">
+        {{else}}
+        <span class="t-card-thumb-empty">🧵</span>
+        {{end}}
+      </a>
+      {{if gt (len .Fotos) 1}}
+      <div class="t-card-gallery-popover">
+        {{range .Fotos}}
+        <img src="/media/productos/{{.}}" alt="">
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    <div class="t-card-body">
+      <span class="t-card-cat">{{.CategoriaNombre}}</span>
+      <h3 class="t-card-title"><a href="/producto/{{.ID}}">{{.Nombre}}</a></h3>
+      <p class="t-card-price">Q {{printf "%.2f" .PrecioVenta}}</p>
+      <div class="t-card-actions">
+        <button type="button" class="t-btn t-btn-primary t-btn-block t-agregar"
+                data-id="{{.ID}}" data-nombre="{{.Nombre}}" data-precio="{{.PrecioVenta}}"
+                data-foto="{{.FotoPortada}}" data-stock="{{printf "%.0f" .Stock}}"
+                {{if lt .Stock 1.0}}disabled{{end}}>
+          {{if lt .Stock 1.0}}Agotado{{else}}Agregar al carrito{{end}}
+        </button>
+      </div>
+    </div>
+  </div>
+  {{end}}
+  <p id="tSinResultados" class="t-empty" hidden>Ningún producto coincide con las categorías elegidas.</p>
+</div>
+{{else}}
+<p class="t-empty">Todavía no hay productos publicados.</p>
+{{end}}
+
+<script>
+(function () {
+  var cards = Array.prototype.slice.call(document.querySelectorAll('#tGrid .t-card'));
+  var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.t-cat-checkbox'));
+  var btn = document.getElementById('tFiltroBtn');
+  var panel = document.getElementById('tFiltroPanel');
+  var wrap = document.getElementById('tFiltroCategorias');
+  var count = document.getElementById('tFiltroCount');
+  var sinResultados = document.getElementById('tSinResultados');
+
+  function activas() {
+    var set = {};
+    checkboxes.forEach(function (cb) { if (cb.checked) set[cb.value] = true; });
+    return set;
+  }
+
+  function aplicar() {
+    var set = activas();
+    var visibles = 0;
+    cards.forEach(function (card) {
+      var visible = !!set[card.dataset.categoriaId];
+      card.hidden = !visible;
+      if (visible) visibles++;
+    });
+    if (sinResultados) sinResultados.hidden = visibles !== 0;
+
+    var total = checkboxes.length;
+    var n = Object.keys(set).length;
+    count.textContent = '(' + n + '/' + total + ')';
+  }
+
+  checkboxes.forEach(function (cb) { cb.addEventListener('change', aplicar); });
+
+  panel.addEventListener('click', function (e) {
+    var action = e.target.getAttribute('data-action');
+    if (action === 'all') {
+      checkboxes.forEach(function (cb) { cb.checked = true; });
+      aplicar();
+    } else if (action === 'none') {
+      checkboxes.forEach(function (cb) { cb.checked = false; });
+      aplicar();
+    }
+  });
+
+  btn.addEventListener('click', function () {
+    panel.hidden = !panel.hidden;
+  });
+  document.addEventListener('click', function (e) {
+    if (!wrap.contains(e.target)) panel.hidden = true;
+  });
+
+  aplicar();
+
+  Array.prototype.slice.call(document.querySelectorAll('.t-agregar')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      Carrito.agregar({
+        productoId: parseInt(btn.getAttribute('data-id'), 10),
+        nombre: btn.getAttribute('data-nombre'),
+        precio: parseFloat(btn.getAttribute('data-precio')),
+        foto: btn.getAttribute('data-foto'),
+        stock: parseFloat(btn.getAttribute('data-stock'))
+      }, 1);
+      var textoOriginal = btn.textContent;
+      btn.textContent = 'Agregado ✓';
+      setTimeout(function () { btn.textContent = textoOriginal; }, 1200);
+    });
+  });
+})();
+</script>
+{{end}}

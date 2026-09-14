@@ -1,0 +1,72 @@
+{{define "content"}}
+<section class="t-hero" style="padding-top:10px;">
+  <h1>Tu carrito</h1>
+</section>
+
+<div id="tCarritoVacio" class="t-empty" hidden>
+  <p>Todavía no has agregado productos.</p>
+  <a href="/" class="t-btn t-btn-primary">Ver catálogo</a>
+</div>
+
+<div id="tCarritoContenido" hidden>
+  <div id="tLineas"></div>
+
+  <div class="t-resumen" style="margin-top:24px; max-width:360px; margin-left:auto;">
+    <div class="t-resumen-total">
+      <span>Total</span>
+      <span id="tTotal">Q 0.00</span>
+    </div>
+    <a href="/checkout" class="t-btn t-btn-primary t-btn-block" style="margin-top:16px;">Continuar a pagar</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  function render() {
+    var items = Carrito.obtener();
+    var vacio = document.getElementById('tCarritoVacio');
+    var contenido = document.getElementById('tCarritoContenido');
+    vacio.hidden = items.length > 0;
+    contenido.hidden = items.length === 0;
+
+    var lineas = document.getElementById('tLineas');
+    lineas.innerHTML = '';
+    items.forEach(function (item) {
+      var div = document.createElement('div');
+      div.className = 't-linea';
+      div.innerHTML =
+        (item.foto ? '<img src="/media/productos/' + item.foto + '" alt="">' : '<div></div>') +
+        '<div>' +
+          '<strong>' + item.nombre + '</strong><br>' +
+          '<span>Q ' + item.precio.toFixed(2) + '</span>' +
+        '</div>' +
+        '<div class="t-linea-qty">' +
+          '<button type="button" data-accion="menos">−</button>' +
+          '<span>' + item.cantidad + '</span>' +
+          '<button type="button" data-accion="mas">+</button>' +
+          '<button type="button" data-accion="quitar" style="margin-left:10px;">✕</button>' +
+        '</div>';
+
+      div.querySelector('[data-accion="menos"]').addEventListener('click', function () {
+        Carrito.actualizarCantidad(item.productoId, item.cantidad - 1);
+        render();
+      });
+      div.querySelector('[data-accion="mas"]').addEventListener('click', function () {
+        var limite = item.stock || Infinity;
+        Carrito.actualizarCantidad(item.productoId, Math.min(item.cantidad + 1, limite));
+        render();
+      });
+      div.querySelector('[data-accion="quitar"]').addEventListener('click', function () {
+        Carrito.quitar(item.productoId);
+        render();
+      });
+      lineas.appendChild(div);
+    });
+
+    document.getElementById('tTotal').textContent = 'Q ' + Carrito.totalPrecio(items).toFixed(2);
+  }
+
+  render();
+})();
+</script>
+{{end}}

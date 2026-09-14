@@ -1,0 +1,114 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Mantenimiento 3</p>
+  <h1>Sitio web</h1>
+  <p class="lead">Identidad del negocio, redes sociales, logo y colores de la
+    tienda pública.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow">
+  <h3>Datos del negocio</h3>
+  <form method="post" action="/admin/sitio" enctype="multipart/form-data" class="form-grid">
+    <label class="span-2">
+      <span>Nombre del negocio</span>
+      <input type="text" name="nombre_negocio" value="{{.Config.NombreNegocio}}" required>
+    </label>
+    <label class="span-2">
+      <span>Dirección</span>
+      <input type="text" name="direccion" value="{{.Config.Direccion}}">
+    </label>
+    <label>
+      <span>Teléfono</span>
+      <input type="text" name="telefono" value="{{.Config.Telefono}}">
+    </label>
+    <label>
+      <span>Email</span>
+      <input type="email" name="email" value="{{.Config.Email}}">
+    </label>
+    <label>
+      <span>Facebook (URL)</span>
+      <input type="url" name="facebook_url" value="{{.Config.FacebookURL}}" placeholder="https://facebook.com/...">
+    </label>
+    <label>
+      <span>Instagram (URL)</span>
+      <input type="url" name="instagram_url" value="{{.Config.InstagramURL}}" placeholder="https://instagram.com/...">
+    </label>
+    <label>
+      <span>WhatsApp (número)</span>
+      <input type="text" name="whatsapp_numero" value="{{.Config.WhatsappNumero}}" placeholder="Ej. 50212345678">
+    </label>
+
+    <label class="span-2">
+      <span>Logotipo</span>
+      <input type="file" name="logo" accept="image/*">
+    </label>
+    {{if .LogoURL}}
+    <div class="span-2 logo-actual">
+      <img src="{{.LogoURL}}" alt="Logo actual">
+      <span class="cell-muted">Logo actual — sube un archivo nuevo para reemplazarlo.</span>
+    </div>
+    {{end}}
+
+    <div class="span-2 color-grid">
+      <label>
+        <span>Color de fondo</span>
+        <input type="color" name="color_fondo" id="colorFondo" value="{{.Config.ColorFondo}}">
+      </label>
+      <label>
+        <span>Color de texto</span>
+        <input type="color" name="color_texto" id="colorTexto" value="{{.Config.ColorTexto}}">
+      </label>
+      <label>
+        <span>Marcos / bordes</span>
+        <input type="color" name="color_marco" id="colorMarco" value="{{.Config.ColorMarco}}">
+      </label>
+      <label>
+        <span>Acento (botones)</span>
+        <input type="color" name="color_acento" id="colorAcento" value="{{.Config.ColorAcento}}">
+      </label>
+    </div>
+
+    <div class="span-2">
+      <p class="cell-muted" style="margin-bottom:8px;">Vista previa</p>
+      <div id="preview" class="sitio-preview">
+        <div class="sitio-preview-card">
+          <div class="sitio-preview-thumb"></div>
+          <p class="sitio-preview-title">Producto de ejemplo</p>
+          <p class="sitio-preview-price">Q 150.00</p>
+          <button type="button" class="sitio-preview-btn">Agregar al carrito</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar configuración</button>
+    </div>
+  </form>
+</section>
+
+<script>
+(function () {
+  var preview = document.getElementById('preview');
+  var inputs = {
+    fondo: document.getElementById('colorFondo'),
+    texto: document.getElementById('colorTexto'),
+    marco: document.getElementById('colorMarco'),
+    acento: document.getElementById('colorAcento')
+  };
+  function sync() {
+    preview.style.setProperty('--p-fondo', inputs.fondo.value);
+    preview.style.setProperty('--p-texto', inputs.texto.value);
+    preview.style.setProperty('--p-marco', inputs.marco.value);
+    preview.style.setProperty('--p-acento', inputs.acento.value);
+  }
+  Object.keys(inputs).forEach(function (k) {
+    inputs[k].addEventListener('input', sync);
+  });
+  sync();
+})();
+</script>
+{{end}}

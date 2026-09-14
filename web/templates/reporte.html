@@ -1,0 +1,136 @@
+{{define "content"}}
+<section class="page-head no-print">
+  <p class="eyebrow">Inventario</p>
+  <h1>Reporte de movimientos</h1>
+  <p class="lead">Ingresos y egresos por rango de fechas.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-error">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow no-print">
+  <form method="get" action="/admin/mantenimiento/inventario/reporte" class="form-grid">
+    <input type="hidden" name="f" value="1">
+
+    <label>
+      <span>Desde</span>
+      <input type="date" name="desde" value="{{.Desde}}" required>
+    </label>
+    <label>
+      <span>Hasta</span>
+      <input type="date" name="hasta" value="{{.Hasta}}" required>
+    </label>
+
+    <label class="checkbox-row" id="ingresosRow">
+      <input type="checkbox" name="ingresos" {{if .IncluirIngresos}}checked{{end}}>
+      <span>Ingresos</span>
+    </label>
+    <label class="checkbox-row" id="egresosRow">
+      <input type="checkbox" name="egresos" {{if .IncluirEgresos}}checked{{end}}>
+      <span>Egresos</span>
+    </label>
+
+    <label class="checkbox-row span-2">
+      <input type="checkbox" name="solo_ventas" id="soloVentasCheckbox" {{if .SoloVentas}}checked{{end}}>
+      <span>Solo ventas <span class="cell-muted">(ignora Ingresos/Egresos: muestra únicamente los consumos marcados como venta)</span></span>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Generar reporte</button>
+    </div>
+  </form>
+</section>
+
+<section class="print-header">
+  <h2>Manualidades — Reporte de movimientos</h2>
+  <p>Del {{.Desde}} al {{.Hasta}}</p>
+</section>
+
+{{if .Movimientos}}
+<section class="report-stats">
+  <div class="stat-card">
+    <span class="stat-label">Total ingresos</span>
+    <span class="stat-value">{{printf "%.2f" .TotalIngresos}}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total egresos</span>
+    <span class="stat-value">{{printf "%.2f" .TotalEgresos}}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">De las cuales, ventas</span>
+    <span class="stat-value">{{printf "%.2f" .TotalVentas}}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Total vendido (Q)</span>
+    <span class="stat-value">Q {{printf "%.2f" .TotalVendido}}</span>
+  </div>
+</section>
+{{end}}
+
+<section class="panel">
+  {{if .Movimientos}}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th>
+        <th>Precio venta</th><th>Total</th><th>Motivo</th><th class="no-print">Registrado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Movimientos}}
+      <tr>
+        <td>{{.Fecha.Format "02/01/2006"}}</td>
+        <td class="cell-strong">{{.ProductoNombre}}</td>
+        <td>
+          {{if eq .Tipo "ingreso"}}<span class="tipo-ingreso">Ingreso</span>
+          {{else}}<span class="tipo-consumo">Consumo</span>{{if .EsVenta}} <span class="tag-venta">Venta</span>{{end}}
+          {{end}}
+        </td>
+        <td>{{printf "%.2f" .Cantidad}}</td>
+        {{if .EsVenta}}
+        <td>Q {{printf "%.2f" .PrecioVenta}}</td>
+        <td class="cell-strong">Q {{printf "%.2f" .Total}}</td>
+        {{else}}
+        <td class="cell-muted">—</td>
+        <td class="cell-muted">—</td>
+        {{end}}
+        <td>{{.Motivo}}</td>
+        <td class="cell-muted no-print">{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Ningún movimiento coincide con este filtro.</p>
+  {{end}}
+</section>
+
+{{if .Movimientos}}
+<div class="form-actions no-print">
+  <button type="button" id="btnImprimir" class="btn btn-ghost">🖨️ Imprimir</button>
+</div>
+{{end}}
+
+<script>
+(function () {
+  var soloVentas = document.getElementById('soloVentasCheckbox');
+  var ingresosRow = document.getElementById('ingresosRow');
+  var egresosRow = document.getElementById('egresosRow');
+  function sync() {
+    var deshabilitar = soloVentas.checked;
+    ingresosRow.classList.toggle('checkbox-row-disabled', deshabilitar);
+    egresosRow.classList.toggle('checkbox-row-disabled', deshabilitar);
+    ingresosRow.querySelector('input').disabled = deshabilitar;
+    egresosRow.querySelector('input').disabled = deshabilitar;
+  }
+  soloVentas.addEventListener('change', sync);
+  sync();
+
+  var btnImprimir = document.getElementById('btnImprimir');
+  if (btnImprimir) {
+    btnImprimir.addEventListener('click', function () { window.print(); });
+  }
+})();
+</script>
+{{end}}

@@ -1,0 +1,76 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Inventario</p>
+  <h1>{{if .EsNuevo}}Nuevo producto{{else}}Editar producto{{end}}</h1>
+</section>
+
+{{if .Message}}
+<div class="alert alert-error">{{.Message}}</div>
+{{end}}
+
+<section class="panel">
+  <form method="post" action="{{.FormAction}}" enctype="multipart/form-data" class="form-grid">
+    <label class="span-2">
+      <span>Nombre</span>
+      <input type="text" name="nombre" value="{{.Producto.Nombre}}" required>
+    </label>
+
+    <label>
+      <span>Categoría</span>
+      <select name="categoria_id" required>
+        <option value="">Selecciona…</option>
+        {{$catActual := .Producto.CategoriaID}}
+        {{range .Categorias}}
+        <option value="{{.ID}}" {{if eq .ID $catActual}}selected{{end}}>{{.Nombre}}</option>
+        {{end}}
+      </select>
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="activo" {{if .Producto.Activo}}checked{{end}}>
+      <span>Activo (visible en la tienda)</span>
+    </label>
+
+    <label>
+      <span>Precio de compra</span>
+      <input type="number" step="0.01" min="0" name="precio_compra" value="{{.Producto.PrecioCompra}}" required>
+    </label>
+    <label>
+      <span>Precio de venta</span>
+      <input type="number" step="0.01" min="0" name="precio_venta" value="{{.Producto.PrecioVenta}}" required>
+    </label>
+
+    <label class="span-2">
+      <span>Descripción</span>
+      <textarea name="descripcion" rows="3">{{.Producto.Descripcion}}</textarea>
+    </label>
+
+    <label class="span-2">
+      <span>Agregar fotografías (varios ángulos)</span>
+      <input type="file" name="fotos" accept="image/*" multiple>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar producto</button>
+      <a href="/admin/mantenimiento/inventario/productos" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+</section>
+
+{{if .Fotos}}
+<section class="panel panel-narrow">
+  <h3>Fotografías actuales</h3>
+  <div class="foto-grid">
+    {{range .Fotos}}
+    <div class="foto-item">
+      <img src="{{.URL}}" alt="">
+      <form method="post" action="/admin/mantenimiento/inventario/productos/{{$.Producto.ID}}/fotos/{{.ID}}/eliminar"
+            onsubmit="return confirm('¿Eliminar esta foto?');">
+        <button type="submit" class="link-action link-danger">Eliminar</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}
+{{end}}

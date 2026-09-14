@@ -1,0 +1,94 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Tienda</p>
+  <h1>Pedido #{{.Pedido.ID}}</h1>
+  <p class="lead">
+    {{.Pedido.CreadoEn.Format "02/01/2006 15:04"}} · Estado:
+    <span class="estado-badge estado-{{.Pedido.Estado}}">
+      {{if eq .Pedido.Estado "procesando"}}Procesando en bodega
+      {{else if eq .Pedido.Estado "entregado"}}Entregado
+      {{else if eq .Pedido.Estado "cancelado"}}Cancelado
+      {{else}}Pagado{{end}}
+    </span>
+  </p>
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Cambiar estado</h3>
+  <form method="post" action="/admin/pedidos/{{.Pedido.ID}}" class="form-grid">
+    <label class="span-2">
+      <span>Estado</span>
+      <select name="estado">
+        {{$actual := .Pedido.Estado}}
+        {{range .EstadosValidos}}
+        <option value="{{.}}" {{if eq . $actual}}selected{{end}}>
+          {{if eq . "procesando"}}Procesando en bodega
+          {{else if eq . "entregado"}}Entregado
+          {{else if eq . "cancelado"}}Cancelado
+          {{else}}Pagado{{end}}
+        </option>
+        {{end}}
+      </select>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Actualizar estado</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Cliente</h3>
+  <p><strong>{{.Pedido.ClienteNombre}}</strong><br>
+    Tel: {{.Pedido.ClienteTelefono}}{{if .Pedido.ClienteEmail}} · {{.Pedido.ClienteEmail}}{{end}}<br>
+    NIT: {{.Pedido.ClienteNIT}}</p>
+  <p>
+    {{if eq .Pedido.MetodoEntrega "domicilio"}}
+    <strong>Entrega a domicilio:</strong> {{.Pedido.DireccionEntrega}}
+    {{else}}
+    <strong>Recoger en tienda</strong>
+    {{end}}
+  </p>
+  {{if .Pedido.Notas}}<p><strong>Notas:</strong> {{.Pedido.Notas}}</p>{{end}}
+</section>
+
+{{if .Pago}}
+<section class="panel panel-narrow">
+  <h3>Pago</h3>
+  <p>
+    <span class="estado-badge {{if eq .Pago.Estado "aprobado"}}estado-entregado{{else}}estado-cancelado{{end}}">
+      {{if eq .Pago.Estado "aprobado"}}Aprobado{{else}}Rechazado{{end}}
+    </span>
+    · {{if eq .Pago.Metodo "tarjeta"}}Tarjeta{{else}}{{.Pago.Metodo}}{{end}}
+    {{if .Pago.TarjetaUltimos4}} terminada en {{.Pago.TarjetaUltimos4}}{{end}}
+  </p>
+  <p>Monto: Q {{printf "%.2f" .Pago.Monto}} · Referencia: {{.Pago.Referencia}}<br>
+    {{.Pago.CreadoEn.Format "02/01/2006 15:04"}}</p>
+  {{if .Pago.MotivoRechazo}}<p><strong>Motivo del rechazo:</strong> {{.Pago.MotivoRechazo}}</p>{{end}}
+</section>
+{{end}}
+
+<section class="panel">
+  <table class="data-table">
+    <thead>
+      <tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal</th></tr>
+    </thead>
+    <tbody>
+      {{range .Pedido.Items}}
+      <tr>
+        <td class="cell-strong">{{.NombreProducto}}</td>
+        <td>{{printf "%.2f" .Cantidad}}</td>
+        <td>Q {{printf "%.2f" .PrecioUnitario}}</td>
+        <td>Q {{printf "%.2f" .Subtotal}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="report-stats">
+  <div class="stat-card">
+    <span class="stat-label">Total del pedido</span>
+    <span class="stat-value">Q {{printf "%.2f" .Pedido.Total}}</span>
+  </div>
+</section>
+{{end}}

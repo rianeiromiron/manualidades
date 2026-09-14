@@ -1,0 +1,100 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Usuarios</p>
+  <h1>{{if .EsNuevo}}Nuevo usuario{{else}}Editar usuario{{end}}</h1>
+</section>
+
+{{if .Message}}
+<div class="alert alert-error">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow">
+  <form method="post" action="{{.FormAction}}" class="form-grid">
+    <label class="span-2">
+      <span>Usuario</span>
+      <input type="text" name="usuario" value="{{.Usuario.Usuario}}" {{if not .EsNuevo}}readonly{{else}}required{{end}}>
+    </label>
+
+    {{if not .EsNuevo}}
+    <label class="span-2 checkbox-row" id="cambiarPasswordRow">
+      <input type="checkbox" id="cambiarPasswordCheckbox">
+      <span>Cambiar la contraseña</span>
+    </label>
+    {{end}}
+
+    <label id="passwordRow">
+      <span>{{if .EsNuevo}}Contraseña{{else}}Nueva contraseña{{end}}</span>
+      <input type="password" name="password" id="passwordInput" autocomplete="new-password"
+             {{if .EsNuevo}}required{{else}}disabled{{end}} minlength="8">
+    </label>
+    <label id="confirmarRow">
+      <span>Confirmar contraseña</span>
+      <input type="password" name="confirmar" id="confirmarInput" autocomplete="new-password"
+             {{if .EsNuevo}}required{{else}}disabled{{end}} minlength="8">
+    </label>
+
+    <label class="span-2">
+      <span>Rol</span>
+      <select name="rol" id="rolSelect" required>
+        <option value="administrativo" {{if eq .Usuario.Rol "administrativo"}}selected{{end}}>Administrativo (módulos elegidos abajo)</option>
+        <option value="superusuario" {{if eq .Usuario.Rol "superusuario"}}selected{{end}}>Superusuario (todos los módulos)</option>
+      </select>
+    </label>
+
+    <div class="span-2" id="modulosBox">
+      <span style="font-weight:700; font-size:0.88rem; color:var(--ink-soft); display:block; margin-bottom:6px;">Módulos asignados</span>
+      <div class="filter-dropdown-list" style="border:1.5px solid var(--line); border-radius:10px; padding:10px 14px;">
+        {{range .Modulos}}
+        <label class="filter-checkbox-row">
+          <input type="checkbox" name="modulos" value="{{.ID}}" {{if .Asignado}}checked{{end}}>
+          <span>{{.Nombre}}</span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+      <a href="/admin/usuarios" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+</section>
+
+<script>
+(function () {
+  var rolSelect = document.getElementById('rolSelect');
+  var modulosBox = document.getElementById('modulosBox');
+  function syncRol() {
+    modulosBox.hidden = rolSelect.value !== 'administrativo';
+  }
+  rolSelect.addEventListener('change', syncRol);
+  syncRol();
+
+  // En edición, la contraseña solo se toca si se marca la casilla; así,
+  // si el navegador autocompleta el campo por su cuenta, no se manda al
+  // servidor (un input disabled no se incluye en el envío del formulario).
+  var cambiarPasswordCheckbox = document.getElementById('cambiarPasswordCheckbox');
+  if (cambiarPasswordCheckbox) {
+    var passwordInput = document.getElementById('passwordInput');
+    var confirmarInput = document.getElementById('confirmarInput');
+    var passwordRow = document.getElementById('passwordRow');
+    var confirmarRow = document.getElementById('confirmarRow');
+    function syncPassword() {
+      var activo = cambiarPasswordCheckbox.checked;
+      passwordInput.disabled = !activo;
+      confirmarInput.disabled = !activo;
+      passwordInput.required = activo;
+      confirmarInput.required = activo;
+      passwordRow.classList.toggle('checkbox-row-disabled', !activo);
+      confirmarRow.classList.toggle('checkbox-row-disabled', !activo);
+      if (!activo) {
+        passwordInput.value = '';
+        confirmarInput.value = '';
+      }
+    }
+    cambiarPasswordCheckbox.addEventListener('change', syncPassword);
+    syncPassword();
+  }
+})();
+</script>
+{{end}}

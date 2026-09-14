@@ -1,0 +1,29 @@
+<div class="mov-header">
+  <h4>Historial de movimientos — {{.Producto.Nombre}}</h4>
+  <span class="stock-badge{{if lt .Producto.Stock 1.0}} low{{end}}">Existencia actual: {{printf "%.0f" .Producto.Stock}}</span>
+</div>
+{{if .Movimientos}}
+<table class="data-table mov-table">
+  <thead>
+    <tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Saldo</th><th>Motivo</th><th>Registrado</th></tr>
+  </thead>
+  <tbody>
+    {{range .Movimientos}}
+    <tr>
+      <td>{{.Fecha.Format "02/01/2006"}}</td>
+      <td>
+        {{if eq .Tipo "ingreso"}}<span class="tipo-ingreso">Ingreso</span>
+        {{else}}<span class="tipo-consumo">Consumo</span>{{if .EsVenta}} <span class="tag-venta">Venta</span>{{end}}
+        {{end}}
+      </td>
+      <td>{{printf "%.2f" .Cantidad}}</td>
+      <td class="cell-strong">{{printf "%.2f" .Saldo}}</td>
+      <td>{{.Motivo}}</td>
+      <td class="cell-muted">{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty-hint">Este producto todavía no tiene movimientos registrados.</p>
+{{end}}

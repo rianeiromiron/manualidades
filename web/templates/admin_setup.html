@@ -1,0 +1,27 @@
+{{define "content"}}
+<h1>Configurar acceso</h1>
+<p class="lead">Primera vez aquí: crea el usuario y contraseña que vas a
+  usar para entrar al panel de administración.</p>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<form method="post" action="/admin/setup" class="form-grid">
+  <label class="span-2">
+    <span>Usuario</span>
+    <input type="text" name="usuario" value="{{.Usuario}}" autofocus required>
+  </label>
+  <label class="span-2">
+    <span>Contraseña</span>
+    <input type="password" name="password" required minlength="8">
+  </label>
+  <label class="span-2">
+    <span>Confirmar contraseña</span>
+    <input type="password" name="confirmar" required minlength="8">
+  </label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary" style="width:100%;">Crear usuario</button>
+  </div>
+</form>
+{{end}}

@@ -17,12 +17,21 @@
 <section class="panel panel-narrow">
   <h3>Registrar movimiento</h3>
   <form method="post" action="/admin/mantenimiento/inventario/movimientos" class="form-grid">
-    <label class="span-2">
+    <label>
+      <span>Categoría</span>
+      <select id="categoriaFiltro">
+        <option value="">Todas las categorías</option>
+        {{range .Categorias}}
+        <option value="{{.ID}}">{{.Nombre}}</option>
+        {{end}}
+      </select>
+    </label>
+    <label>
       <span>Producto</span>
       <select name="producto_id" id="productoSelect" required>
         <option value="">Selecciona…</option>
         {{range .Productos}}
-        <option value="{{.ID}}" data-precio-venta="{{.PrecioVenta}}">{{.Nombre}} (stock: {{printf "%.0f" .Stock}})</option>
+        <option value="{{.ID}}" data-precio-venta="{{.PrecioVenta}}" data-categoria-id="{{.CategoriaID}}">{{.Nombre}} (stock: {{printf "%.0f" .Stock}})</option>
         {{end}}
       </select>
     </label>
@@ -96,6 +105,7 @@
 (function () {
   var tipoSelect = document.getElementById('tipoSelect');
   var productoSelect = document.getElementById('productoSelect');
+  var categoriaFiltro = document.getElementById('categoriaFiltro');
   var esVentaRow = document.getElementById('esVentaRow');
   var esVentaCheckbox = document.getElementById('esVentaCheckbox');
   var precioVentaRow = document.getElementById('precioVentaRow');
@@ -125,9 +135,27 @@
     }
   }
 
+  function syncCategoria() {
+    var categoriaID = categoriaFiltro.value;
+    var opciones = productoSelect.options;
+    for (var i = 0; i < opciones.length; i++) {
+      var opt = opciones[i];
+      if (!opt.value) continue; // "Selecciona…" siempre visible
+      opt.hidden = categoriaID !== '' && opt.getAttribute('data-categoria-id') !== categoriaID;
+    }
+    // Si el producto elegido queda oculto por el filtro, se limpia la
+    // selección en vez de dejar un producto de otra categoría escondido.
+    var actual = productoSelect.options[productoSelect.selectedIndex];
+    if (actual && actual.hidden) {
+      productoSelect.value = '';
+      syncPrecio();
+    }
+  }
+
   tipoSelect.addEventListener('change', syncTipo);
   esVentaCheckbox.addEventListener('change', syncPrecio);
   productoSelect.addEventListener('change', syncPrecio);
+  categoriaFiltro.addEventListener('change', syncCategoria);
   syncTipo();
 })();
 </script>

@@ -68,12 +68,18 @@ func (a *App) renderMovimientos(w http.ResponseWriter, r *http.Request, conn *sq
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	categorias, err := inventario.ListCategorias(conn)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	render(w, r, "movimientos_list.html", map[string]any{
 		"Title":       "Ingresos y consumos",
 		"Active":      "inventario",
 		"Movimientos": movimientos,
 		"Productos":   productos,
+		"Categorias":  categorias,
 		"Message":     message,
 		"MessageKind": kind,
 		"Hoy":         time.Now().Format("2006-01-02"),

@@ -280,7 +280,7 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
   box-shadow: var(--t-shadow-sm);
   margin-bottom: 12px;
 }
-.t-galeria-principal img { width: 100%; height: 100%; object-fit: cover; }
+.t-galeria-principal img { width: 100%; height: 100%; object-fit: contain; }
 .t-galeria-mini { display: flex; gap: 10px; flex-wrap: wrap; }
 .t-galeria-mini img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 10px;

@@ -8,11 +8,15 @@
       {{if eq .Pedido.Estado "procesando"}}Procesando en bodega
       {{else if eq .Pedido.Estado "entregado"}}Entregado
       {{else if eq .Pedido.Estado "cancelado"}}Cancelado
+      {{else if eq .Pedido.Estado "pendiente_pago"}}Pendiente de pago
+      {{else if eq .Pedido.Estado "pagando"}}Cobrando
+      {{else if eq .Pedido.Estado "expirado"}}Expirado (sin pago)
       {{else}}Pagado{{end}}
     </span>
   </p>
 </section>
 
+{{if .Pedido.EsReal}}
 <section class="panel panel-narrow">
   <h3>Cambiar estado</h3>
   <form method="post" action="/admin/pedidos/{{.Pedido.ID}}" class="form-grid">
@@ -35,6 +39,12 @@
     </div>
   </form>
 </section>
+{{else}}
+<section class="panel panel-narrow">
+  <p class="empty-hint">Este pedido no está pagado, así que su estado no se puede cambiar a mano.
+    {{if .Pedido.ExpiraEn}}La reserva de stock vence a las {{.Pedido.ExpiraEn.Format "15:04"}}.{{end}}</p>
+</section>
+{{end}}
 
 <section class="panel panel-narrow">
   <h3>Cliente</h3>
@@ -56,14 +66,14 @@
   <h3>Pago</h3>
   <p>
     <span class="estado-badge {{if eq .Pago.Estado "aprobado"}}estado-entregado{{else}}estado-cancelado{{end}}">
-      {{if eq .Pago.Estado "aprobado"}}Aprobado{{else}}Rechazado{{end}}
+      {{if eq .Pago.Estado "aprobado"}}Aprobado{{else if eq .Pago.Estado "por_conciliar"}}Por conciliar{{else if eq .Pago.Estado "iniciado"}}En curso{{else if eq .Pago.Estado "fallo"}}Falla del proveedor{{else}}Rechazado{{end}}
     </span>
     · {{if eq .Pago.Metodo "tarjeta"}}Tarjeta{{else}}{{.Pago.Metodo}}{{end}}
     {{if .Pago.TarjetaUltimos4}} terminada en {{.Pago.TarjetaUltimos4}}{{end}}
   </p>
   <p>Monto: Q {{printf "%.2f" .Pago.Monto}} · Referencia: {{.Pago.Referencia}}<br>
     {{.Pago.CreadoEn.Format "02/01/2006 15:04"}}</p>
-  {{if .Pago.MotivoRechazo}}<p><strong>Motivo del rechazo:</strong> {{.Pago.MotivoRechazo}}</p>{{end}}
+  {{if .Pago.MotivoRechazo}}<p><strong>Motivo:</strong> {{.Pago.MotivoRechazo}}</p>{{end}}
 </section>
 {{end}}
 

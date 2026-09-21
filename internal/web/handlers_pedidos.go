@@ -9,7 +9,9 @@ import (
 	"manualidades/internal/tienda"
 )
 
-// PedidosList muestra los pedidos hechos desde la tienda pública.
+// PedidosList muestra los pedidos pagados de la tienda pública, y aparte los
+// que hoy están reservando stock mientras esperan el pago (esos todavía no
+// se despachan).
 func (a *App) PedidosList(w http.ResponseWriter, r *http.Request) {
 	conn := a.requireDB(w, r, "pedidos")
 	if conn == nil {
@@ -20,17 +22,22 @@ func (a *App) PedidosList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	pendientes, err := tienda.ListPedidosPendientes(conn)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	render(w, r, "pedidos_list.html", map[string]any{
-		"Title":   "Pedidos",
-		"Active":  "pedidos",
-		"Pedidos": pedidos,
+		"Title":      "Pedidos",
+		"Active":     "pedidos",
+		"Pedidos":    pedidos,
+		"Pendientes": pendientes,
 	})
 }
 
 // PagosList muestra todos los intentos de pago recientes, incluidos los
-// que nunca llegaron a generar un pedido (rechazados o con falla técnica
-// de la pasarela) — esos no aparecen en PedidosList porque no tienen
-// pedido asociado.
+// rechazados, con falla técnica de la pasarela o por conciliar — los que no
+// terminaron en un pedido pagado no aparecen en PedidosList.
 func (a *App) PagosList(w http.ResponseWriter, r *http.Request) {
 	conn := a.requireDB(w, r, "pedidos")
 	if conn == nil {

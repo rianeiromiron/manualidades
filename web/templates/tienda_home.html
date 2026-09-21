@@ -52,9 +52,9 @@
       <div class="t-card-actions">
         <button type="button" class="t-btn t-btn-primary t-btn-block t-agregar"
                 data-id="{{.ID}}" data-nombre="{{.Nombre}}" data-precio="{{.PrecioVenta}}"
-                data-foto="{{.FotoPortada}}" data-stock="{{printf "%.0f" .Stock}}"
-                {{if lt .Stock 1.0}}disabled{{end}}>
-          {{if lt .Stock 1.0}}Agotado{{else}}Agregar al carrito{{end}}
+                data-foto="{{.FotoPortada}}" data-stock="{{printf "%.0f" .Disponible}}"
+                {{if lt .Disponible 1.0}}disabled{{end}}>
+          {{if lt .Disponible 1.0}}Agotado{{else}}Agregar al carrito{{end}}
         </button>
       </div>
     </div>

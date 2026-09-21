@@ -27,12 +27,12 @@
     <p class="t-detalle-precio">Q {{printf "%.2f" .Producto.PrecioVenta}}</p>
     <p>{{.Producto.Descripcion}}</p>
 
-    {{if lt .Producto.Stock 1.0}}
+    {{if lt .Producto.Disponible 1.0}}
     <p><strong>Agotado momentáneamente.</strong></p>
     {{else}}
     <div class="t-cantidad-row">
       <label for="tCantidad">Cantidad</label>
-      <input type="number" id="tCantidad" value="1" min="1" max="{{printf "%.0f" .Producto.Stock}}">
+      <input type="number" id="tCantidad" value="1" min="1" max="{{printf "%.0f" .Producto.Disponible}}">
     </div>
     <button type="button" class="t-btn t-btn-primary" id="tAgregarBtn">Agregar al carrito</button>
     {{end}}
@@ -51,7 +51,7 @@
       nombre: {{.Producto.Nombre}},
       precio: {{.Producto.PrecioVenta}},
       foto: {{.Producto.FotoPortada}},
-      stock: {{printf "%.0f" .Producto.Stock}}
+      stock: {{printf "%.0f" .Producto.Disponible}}
     }, cantidad);
     btn.textContent = 'Agregado ✓';
     setTimeout(function () { btn.textContent = 'Agregar al carrito'; }, 1200);

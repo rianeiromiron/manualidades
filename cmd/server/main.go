@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -51,6 +52,8 @@ func main() {
 			log.Printf("advertencia: no se pudo conectar a la base de datos (configúrala en /admin/mantenimiento/bd): %v", err)
 		}
 	}
+
+	go limpiarReservas(app)
 
 	r := mux.NewRouter()
 
@@ -127,6 +130,26 @@ func main() {
 	addr := ":8090"
 	log.Printf("manualidades escuchando en http://localhost%s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
+}
+
+// limpiarReservas pasa a "expirado" los pedidos cuya reserva de stock venció
+// y deja por conciliar los cobros que quedaron a medias. No hace falta para
+// que el stock disponible sea correcto (las consultas ya ignoran reservas
+// vencidas): solo mantiene ordenado el estado de pedidos y pagos. Consulta
+// app.DB() en cada vuelta porque la base puede configurarse o cambiarse con
+// el servidor ya corriendo.
+func limpiarReservas(app *web.App) {
+	for range time.Tick(time.Minute) {
+		conn := app.DB()
+		if conn == nil {
+			continue
+		}
+		if n, err := tienda.LimpiarExpirados(conn); err != nil {
+			log.Printf("advertencia: no se pudieron limpiar las reservas vencidas: %v", err)
+		} else if n > 0 {
+			log.Printf("reservas vencidas liberadas: %d pedido(s)", n)
+		}
+	}
 }
 
 // noCache fuerza a que el navegador siempre revalide CSS/JS con el

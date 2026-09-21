@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -59,6 +60,24 @@ func (a *App) requireTiendaDB(w http.ResponseWriter) *sql.DB {
 	return conn
 }
 
+// conDisponibilidad llena Producto.Disponible: la existencia física menos lo
+// que hoy retienen los pedidos en pago. Es lo que la tienda pública debe
+// mostrar y ofrecer, no Stock.
+func conDisponibilidad(conn *sql.DB, productos []inventario.Producto) error {
+	reservado, err := tienda.ReservadoPorProducto(conn)
+	if err != nil {
+		return err
+	}
+	for i := range productos {
+		d := productos[i].Stock - reservado[productos[i].ID]
+		if d < 0 {
+			d = 0
+		}
+		productos[i].Disponible = d
+	}
+	return nil
+}
+
 func productosActivos(conn *sql.DB) ([]inventario.Producto, error) {
 	todos, err := inventario.ListProductos(conn)
 	if err != nil {
@@ -69,6 +88,9 @@ func productosActivos(conn *sql.DB) ([]inventario.Producto, error) {
 		if p.Activo {
 			activos = append(activos, p)
 		}
+	}
+	if err := conDisponibilidad(conn, activos); err != nil {
+		return nil, err
 	}
 	return activos, nil
 }
@@ -110,6 +132,12 @@ func (a *App) TiendaProducto(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	unico := []inventario.Producto{producto}
+	if err := conDisponibilidad(conn, unico); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	producto = unico[0]
 	a.renderTienda(w, "tienda_producto.html", map[string]any{
 		"Title":    producto.Nombre,
 		"Producto": producto,
@@ -150,11 +178,43 @@ type checkoutConfirmarJSON struct {
 	TarjetaCVV        string              `json:"tarjeta_cvv"`
 }
 
+// cookiePedido guarda el token del pedido pendiente de este navegador, para
+// que un reintento de pago (otra tarjeta, corregir un dato) reutilice el
+// mismo pedido en vez de crear otro. Es HttpOnly: el JavaScript de la página
+// no la necesita ni debe leerla.
+const cookiePedido = "pedido_token"
+
+func setCookiePedido(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookiePedido,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int((tienda.TTLReserva + time.Hour).Seconds()),
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func borrarCookiePedido(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookiePedido,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 // TiendaCheckoutConfirmar recibe el carrito completo (fetch/JSON) al
-// presionar "Pagar". Cotiza contra el catálogo actual, le pide el cobro a
-// la pasarela simulada (proyecto hermano "pasarela-simulada"), y solo si
-// aprueba crea el pedido. Un rechazo o una falla del proveedor no crean
-// pedido, pero sí quedan registrados en `pagos` para que el admin los vea.
+// presionar "Pagar" y ejecuta el flujo descrito en internal/tienda/checkout.go:
+// primero RESERVA el stock (pedido en estado pagando), después le pide el
+// cobro a la pasarela simulada (proyecto hermano "pasarela-simulada") y solo
+// si aprueba confirma el pedido y descarga el kardex. Si el cobro falla, el
+// pedido queda pendiente_pago con la reserva vigente y una cookie lo recuerda
+// para que el cliente reintente sin crear otro pedido.
 func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	conn := a.DB()
 	if conn == nil {
@@ -195,14 +255,40 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, tienda.ErrCarritoVacio):
 		respondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "El carrito está vacío."})
 		return
-	case errors.Is(err, inventario.ErrStockInsuficiente):
-		respondJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Ya no hay stock suficiente: " + err.Error()})
-		return
 	case err != nil:
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "No se pudo cotizar el pedido."})
 		return
 	}
 
+	// 1. Reservar el stock. Todavía no se cobra nada.
+	tokenPrevio := ""
+	if c, err := r.Cookie(cookiePedido); err == nil {
+		tokenPrevio = c.Value
+	}
+	intento, err := tienda.IniciarPago(conn, tokenPrevio, tienda.DatosPedido{
+		ClienteNombre:    body.ClienteNombre,
+		ClienteTelefono:  body.ClienteTelefono,
+		ClienteEmail:     body.ClienteEmail,
+		ClienteNIT:       body.ClienteNIT,
+		MetodoEntrega:    body.MetodoEntrega,
+		DireccionEntrega: body.DireccionEntrega,
+		Notas:            body.Notas,
+	}, lineas, total)
+	switch {
+	case errors.Is(err, inventario.ErrStockInsuficiente):
+		respondJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Ya no hay stock suficiente: " + err.Error() + ". No se te cobró nada."})
+		return
+	case errors.Is(err, tienda.ErrPedidoEnProceso):
+		respondJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Tu pago ya se está procesando. Espera unos segundos."})
+		return
+	case err != nil:
+		log.Printf("tienda: no se pudo reservar el pedido: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "No se pudo iniciar el pago. No se te cobró nada."})
+		return
+	}
+	setCookiePedido(w, r, intento.Token)
+
+	// 2. Cobrar — nunca dentro de una transacción SQL.
 	cobro, err := pasarela.Cobrar(pasarela.SolicitudCobro{
 		Monto:         total,
 		NumeroTarjeta: body.TarjetaNumero,
@@ -212,44 +298,37 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		motivo := "No se pudo conectar con la pasarela de pago. Intenta de nuevo."
-		if _, regErr := tienda.RegistrarPago(conn, nil, tienda.MetodoTarjeta, total, tienda.EstadoPagoFallo, "", "", "", motivo); regErr != nil {
-			http.Error(w, regErr.Error(), http.StatusInternalServerError)
-			return
+		if regErr := tienda.RegistrarCobroFallido(conn, intento, tienda.EstadoPagoFallo, "", motivo); regErr != nil {
+			log.Printf("tienda: no se pudo registrar el fallo del cobro (pedido %d, pago %d): %v", intento.PedidoID, intento.PagoID, regErr)
 		}
-		respondJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": motivo})
+		respondJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": motivo + " Tu pedido sigue reservado unos minutos."})
 		return
 	}
 
 	if !cobro.Aprobado {
-		if _, regErr := tienda.RegistrarPago(conn, nil, tienda.MetodoTarjeta, total, tienda.EstadoPagoRechazado, cobro.Referencia, "", "", cobro.Motivo); regErr != nil {
-			http.Error(w, regErr.Error(), http.StatusInternalServerError)
-			return
+		if regErr := tienda.RegistrarCobroFallido(conn, intento, tienda.EstadoPagoRechazado, cobro.Referencia, cobro.Motivo); regErr != nil {
+			log.Printf("tienda: no se pudo registrar el rechazo (pedido %d, pago %d): %v", intento.PedidoID, intento.PagoID, regErr)
 		}
-		respondJSON(w, http.StatusPaymentRequired, map[string]any{"ok": false, "error": "Pago rechazado: " + cobro.Motivo})
+		respondJSON(w, http.StatusPaymentRequired, map[string]any{
+			"ok":    false,
+			"error": "Pago rechazado: " + cobro.Motivo + ". Tu pedido sigue reservado unos minutos: puedes intentar con otra tarjeta.",
+		})
 		return
 	}
 
-	pedidoID, err := tienda.CrearPedido(conn, tienda.DatosPedido{
-		ClienteNombre:    body.ClienteNombre,
-		ClienteTelefono:  body.ClienteTelefono,
-		ClienteEmail:     body.ClienteEmail,
-		ClienteNIT:       body.ClienteNIT,
-		MetodoEntrega:    body.MetodoEntrega,
-		DireccionEntrega: body.DireccionEntrega,
-		Notas:            body.Notas,
-	}, lineas, total, tienda.ResultadoPago{Referencia: cobro.Referencia, Marca: cobro.Marca, Ultimos4: cobro.Ultimos4})
-	if err != nil {
-		// El cliente ya pagó pero el pedido no quedó guardado (CrearPedido
+	// 3. Confirmar: kardex + pago aprobado + pedido pagado, todo o nada.
+	pago := tienda.ResultadoPago{Referencia: cobro.Referencia, Marca: cobro.Marca, Ultimos4: cobro.Ultimos4}
+	if err := tienda.ConfirmarPago(conn, intento, pago); err != nil {
+		// El cliente ya pagó pero el pedido no se pudo confirmar (ConfirmarPago
 		// hizo rollback completo). Se deja constancia del cobro como "por
 		// conciliar" para que el negocio lo reembolse o lo complete a mano.
-		motivo := "Pedido no registrado: " + err.Error()
-		if len(motivo) > 255 {
-			motivo = motivo[:255]
+		motivo := "Pedido no confirmado: " + err.Error()
+		if regErr := tienda.MarcarPorConciliar(conn, intento, pago, motivo); regErr != nil {
+			log.Printf("tienda: cobro aprobado sin pedido NI registro (ref %s, Q%.2f, pedido %d): confirmar: %v; registrar: %v",
+				cobro.Referencia, total, intento.PedidoID, err, regErr)
 		}
-		if _, regErr := tienda.RegistrarPago(conn, nil, tienda.MetodoTarjeta, total, tienda.EstadoPagoPorConciliar, cobro.Referencia, cobro.Marca, cobro.Ultimos4, motivo); regErr != nil {
-			log.Printf("tienda: cobro aprobado sin pedido NI registro (ref %s, Q%.2f): pedido: %v; registro: %v", cobro.Referencia, total, err, regErr)
-		}
-		msg := "El pago se aprobó, pero no se pudo registrar el pedido. Contacta al negocio con la referencia " + cobro.Referencia + "."
+		borrarCookiePedido(w, r)
+		msg := "El pago se aprobó, pero no se pudo confirmar el pedido. Contacta al negocio con la referencia " + cobro.Referencia + "."
 		status := http.StatusInternalServerError
 		if errors.Is(err, inventario.ErrStockInsuficiente) {
 			msg = "Ya no hay stock suficiente (" + err.Error() + "). Tu pago se aprobó pero el pedido no se creó: el negocio te lo reembolsará. Referencia " + cobro.Referencia + "."
@@ -258,7 +337,9 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, status, map[string]any{"ok": false, "error": msg})
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": pedidoID})
+
+	borrarCookiePedido(w, r)
+	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": intento.PedidoID})
 }
 
 func (a *App) TiendaConfirmacion(w http.ResponseWriter, r *http.Request) {
@@ -273,6 +354,13 @@ func (a *App) TiendaConfirmacion(w http.ResponseWriter, r *http.Request) {
 	}
 	pedido, err := tienda.GetPedido(conn, id)
 	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	// Un pedido que aún no está pagado (o que expiró) no tiene confirmación
+	// que mostrar.
+	switch pedido.Estado {
+	case tienda.EstadoPendientePago, tienda.EstadoPagando, tienda.EstadoExpirado:
 		http.NotFound(w, r)
 		return
 	}

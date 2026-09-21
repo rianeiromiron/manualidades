@@ -4,7 +4,7 @@
     <div>
       <p class="eyebrow">Tienda</p>
       <h1>Pedidos</h1>
-      <p class="lead">Ventas realizadas desde la tienda pública.</p>
+      <p class="lead">Ventas pagadas desde la tienda pública.</p>
     </div>
     <a href="/admin/pedidos/pagos" class="btn btn-ghost">Ver intentos de pago →</a>
   </div>
@@ -42,4 +42,34 @@
   <p class="empty-hint">Todavía no hay pedidos.</p>
   {{end}}
 </section>
+
+{{if .Pendientes}}
+<section class="panel">
+  <h3>Pendientes de pago</h3>
+  <p class="lead">Reservan stock hasta que vencen, pero todavía no se pagan: no se despachan.</p>
+  <table class="data-table">
+    <thead>
+      <tr><th>Fecha</th><th>Cliente</th><th>Estado</th><th>Total</th><th>Reserva vence</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Pendientes}}
+      <tr>
+        <td>{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td class="cell-strong">{{.ClienteNombre}}</td>
+        <td>
+          <span class="estado-badge estado-{{.Estado}}">
+            {{if eq .Estado "pagando"}}Cobrando{{else}}Pendiente de pago{{end}}
+          </span>
+        </td>
+        <td>Q {{printf "%.2f" .Total}}</td>
+        <td>{{if .ExpiraEn}}{{.ExpiraEn.Format "15:04"}}{{end}}</td>
+        <td class="cell-actions">
+          <a href="/admin/pedidos/{{.ID}}" class="link-action">Ver</a>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
 {{end}}

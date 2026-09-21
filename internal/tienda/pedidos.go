@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"manualidades/internal/inventario"
+	"github.com/lib/pq"
 )
 
 type ItemCarrito struct {
@@ -14,18 +14,42 @@ type ItemCarrito struct {
 	Cantidad   float64
 }
 
-// Estados posibles de un pedido. Siempre nace en EstadoPagado; el resto se
-// maneja desde el admin (PedidosList/PedidoDetalle).
+// Estados de un pedido. Hay dos grupos:
+//
+// Ciclo de pago (los maneja el checkout, ver checkout.go). Mientras un
+// pedido está en pendiente_pago o pagando, sus líneas RESERVAN stock (hasta
+// expira_en) pero todavía no tocan el kardex:
+//
+//	pendiente_pago → pagando → pagado
+//	      ↑              │
+//	      └── (pago rechazado o con falla: el cliente puede reintentar)
+//	pendiente_pago / pagando → expirado  (la reserva venció o se liberó)
+//
+// Logística (los maneja el admin, ver PedidosList/PedidoDetalle). Un pedido
+// pagado entra al kardex y de ahí en adelante solo cambia a mano:
+//
+//	pagado → procesando → entregado  (o cancelado)
 const (
+	EstadoPendientePago = "pendiente_pago"
+	EstadoPagando       = "pagando"
+	EstadoExpirado      = "expirado"
+
 	EstadoPagado     = "pagado"
 	EstadoProcesando = "procesando" // "procesando en bodega"
 	EstadoEntregado  = "entregado"
 	EstadoCancelado  = "cancelado"
 )
 
+// EstadosValidos son los estados logísticos: los únicos que el admin puede
+// asignar a mano, y los únicos que cuentan como "pedido real".
 var EstadosValidos = []string{EstadoPagado, EstadoProcesando, EstadoEntregado, EstadoCancelado}
 
-var ErrEstadoInvalido = errors.New("estado de pedido inválido")
+var (
+	ErrEstadoInvalido = errors.New("estado de pedido inválido")
+	// ErrEstadoNoModificable: el pedido sigue en el ciclo de pago (o
+	// expiró), así que el admin no puede marcarlo como entregado, etc.
+	ErrEstadoNoModificable = errors.New("el pedido no está pagado: su estado no se puede cambiar a mano")
+)
 
 func esEstadoValido(estado string) bool {
 	for _, e := range EstadosValidos {
@@ -69,8 +93,15 @@ type Pedido struct {
 	Estado           string
 	Total            float64
 	CreadoEn         time.Time
-	Items            []PedidoItem
+	// ExpiraEn solo tiene valor mientras el pedido reserva stock
+	// (pendiente_pago / pagando).
+	ExpiraEn *time.Time
+	Items    []PedidoItem
 }
+
+// EsReal indica si el pedido ya está pagado (o más allá), es decir, si es un
+// pedido que bodega puede ver y cuyo estado logístico se puede cambiar.
+func (p Pedido) EsReal() bool { return esEstadoValido(p.Estado) }
 
 var ErrCarritoVacio = errors.New("el carrito está vacío")
 
@@ -84,19 +115,26 @@ type LineaPedido struct {
 	Subtotal       float64
 }
 
-// CotizarCarrito calcula precios reales desde el catálogo y valida que haya
-// stock suficiente para cada línea. Se usa ANTES de cobrar — no tiene
-// sentido llamar a la pasarela de pago por algo que ya sabemos que no hay.
-// El chequeo real y atómico de stock sigue pasando en CrearPedido (esto es
-// solo una verificación anticipada para no cobrar en vano).
+// CotizarCarrito calcula precios reales desde el catálogo (nunca se confía
+// en lo que mande el navegador), junta líneas repetidas del mismo producto y
+// descarta cantidades no positivas. NO valida stock: eso lo hace IniciarPago
+// dentro de su transacción, con los productos bloqueados, que es la única
+// verificación que no se puede intercalar con otro pedido.
 func CotizarCarrito(conn *sql.DB, items []ItemCarrito) ([]LineaPedido, float64, error) {
 	var lineas []LineaPedido
 	var total float64
+	posicion := map[int]int{} // producto_id -> índice en lineas
 
 	for _, item := range items {
 		if item.Cantidad <= 0 {
 			continue
 		}
+		if i, ok := posicion[item.ProductoID]; ok {
+			lineas[i].Cantidad += item.Cantidad
+			lineas[i].Subtotal = lineas[i].Cantidad * lineas[i].PrecioUnitario
+			continue
+		}
+
 		var nombre string
 		var precioVenta float64
 		err := conn.QueryRow(
@@ -107,114 +145,52 @@ func CotizarCarrito(conn *sql.DB, items []ItemCarrito) ([]LineaPedido, float64, 
 			return nil, 0, fmt.Errorf("producto %d no disponible: %w", item.ProductoID, err)
 		}
 
-		stock, err := inventario.StockActual(conn, item.ProductoID)
-		if err != nil {
-			return nil, 0, err
-		}
-		if item.Cantidad > stock {
-			return nil, 0, fmt.Errorf("%s: %w", nombre, inventario.ErrStockInsuficiente)
-		}
-
-		subtotal := item.Cantidad * precioVenta
-		total += subtotal
-		lineas = append(lineas, LineaPedido{item.ProductoID, nombre, item.Cantidad, precioVenta, subtotal})
+		posicion[item.ProductoID] = len(lineas)
+		lineas = append(lineas, LineaPedido{item.ProductoID, nombre, item.Cantidad, precioVenta, item.Cantidad * precioVenta})
 	}
 
 	if len(lineas) == 0 {
 		return nil, 0, ErrCarritoVacio
 	}
+	for _, l := range lineas {
+		total += l.Subtotal
+	}
 	return lineas, total, nil
 }
 
-// ResultadoPago es lo que devolvió la pasarela para un cobro ya aprobado.
+// ResultadoPago es lo que devolvió la pasarela para un cobro aprobado.
 type ResultadoPago struct {
 	Referencia string
 	Marca      string
 	Ultimos4   string
 }
 
-// CrearPedido inserta el pedido, sus líneas y el pago aprobado, y registra
-// un movimiento de consumo por producto en el kardex (reusando
-// inventario.CreateMovimientoTx) — todo en una sola transacción: si algo
-// falla a mitad de camino, no queda nada guardado. lineas/total deben venir
-// de CotizarCarrito, y pago de un cobro ya aprobado por la pasarela — esta
-// función no cobra nada, solo registra lo que ya se cobró.
-func CrearPedido(conn *sql.DB, datos DatosPedido, lineas []LineaPedido, total float64, pago ResultadoPago) (int, error) {
-	if len(lineas) == 0 {
-		return 0, ErrCarritoVacio
-	}
-
-	tx, err := conn.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	// Bloquea todos los productos del pedido de una vez y en orden de id,
-	// antes de validar stock: evita sobreventa entre pedidos concurrentes y
-	// deadlocks entre pedidos que incluyen los mismos productos.
-	ids := make([]int, 0, len(lineas))
-	for _, l := range lineas {
-		ids = append(ids, l.ProductoID)
-	}
-	if err := inventario.BloquearProductos(tx, ids); err != nil {
-		return 0, err
-	}
-
-	nit := datos.ClienteNIT
-	if nit == "" {
-		nit = "CF"
-	}
-
-	var pedidoID int
-	err = tx.QueryRow(
-		`INSERT INTO pedidos
-			(cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			 metodo_entrega, direccion_entrega, notas, total)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id`,
-		datos.ClienteNombre, datos.ClienteTelefono, datos.ClienteEmail, nit,
-		datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total,
-	).Scan(&pedidoID)
-	if err != nil {
-		return 0, err
-	}
-
-	ahora := time.Now()
-	for _, l := range lineas {
-		if _, err := tx.Exec(
-			`INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			pedidoID, l.ProductoID, l.Nombre, l.Cantidad, l.PrecioUnitario, l.Subtotal,
-		); err != nil {
-			return 0, err
-		}
-
-		motivo := fmt.Sprintf("Venta online #%d", pedidoID)
-		if err := inventario.CreateMovimientoTx(tx, l.ProductoID, "consumo", l.Cantidad, motivo, true, l.PrecioUnitario, ahora); err != nil {
-			if errors.Is(err, inventario.ErrStockInsuficiente) {
-				return 0, fmt.Errorf("%s: %w", l.Nombre, inventario.ErrStockInsuficiente)
-			}
-			return 0, err
-		}
-	}
-
-	if _, err := RegistrarPago(tx, &pedidoID, MetodoTarjeta, total, EstadoPagoAprobado, pago.Referencia, pago.Marca, pago.Ultimos4, ""); err != nil {
-		return 0, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return pedidoID, nil
+// ListPedidos devuelve solo pedidos reales (pagados en adelante). Los que
+// siguen en el ciclo de pago o expiraron no aparecen: bodega no debe ver, y
+// mucho menos despachar, algo que no está pagado. Ver ListPedidosPendientes.
+func ListPedidos(conn *sql.DB) ([]Pedido, error) {
+	return queryPedidos(conn,
+		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
+		 FROM pedidos WHERE estado = ANY($1) ORDER BY creado_en DESC`,
+		pq.Array(EstadosValidos),
+	)
 }
 
-func ListPedidos(conn *sql.DB) ([]Pedido, error) {
-	rows, err := conn.Query(
+// ListPedidosPendientes devuelve los pedidos que hoy están reservando stock
+// mientras esperan (o intentan) el pago.
+func ListPedidosPendientes(conn *sql.DB) ([]Pedido, error) {
+	return queryPedidos(conn,
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			metodo_entrega, direccion_entrega, notas, estado, total, creado_en
-		 FROM pedidos ORDER BY creado_en DESC`,
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
+		 FROM pedidos
+		 WHERE estado IN ('pendiente_pago', 'pagando') AND expira_en > now()
+		 ORDER BY creado_en DESC`,
 	)
+}
+
+func queryPedidos(conn *sql.DB, query string, args ...any) ([]Pedido, error) {
+	rows, err := conn.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -222,11 +198,8 @@ func ListPedidos(conn *sql.DB) ([]Pedido, error) {
 
 	var out []Pedido
 	for rows.Next() {
-		var p Pedido
-		if err := rows.Scan(
-			&p.ID, &p.ClienteNombre, &p.ClienteTelefono, &p.ClienteEmail, &p.ClienteNIT,
-			&p.MetodoEntrega, &p.DireccionEntrega, &p.Notas, &p.Estado, &p.Total, &p.CreadoEn,
-		); err != nil {
+		p, err := scanPedido(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -234,17 +207,28 @@ func ListPedidos(conn *sql.DB) ([]Pedido, error) {
 	return out, rows.Err()
 }
 
-func GetPedido(conn *sql.DB, id int) (Pedido, error) {
+func scanPedido(row interface{ Scan(dest ...any) error }) (Pedido, error) {
 	var p Pedido
-	err := conn.QueryRow(
+	var expira sql.NullTime
+	if err := row.Scan(
+		&p.ID, &p.ClienteNombre, &p.ClienteTelefono, &p.ClienteEmail, &p.ClienteNIT,
+		&p.MetodoEntrega, &p.DireccionEntrega, &p.Notas, &p.Estado, &p.Total, &p.CreadoEn, &expira,
+	); err != nil {
+		return Pedido{}, err
+	}
+	if expira.Valid {
+		p.ExpiraEn = &expira.Time
+	}
+	return p, nil
+}
+
+func GetPedido(conn *sql.DB, id int) (Pedido, error) {
+	p, err := scanPedido(conn.QueryRow(
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			metodo_entrega, direccion_entrega, notas, estado, total, creado_en
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
 		 FROM pedidos WHERE id = $1`,
 		id,
-	).Scan(
-		&p.ID, &p.ClienteNombre, &p.ClienteTelefono, &p.ClienteEmail, &p.ClienteNIT,
-		&p.MetodoEntrega, &p.DireccionEntrega, &p.Notas, &p.Estado, &p.Total, &p.CreadoEn,
-	)
+	))
 	if err != nil {
 		return Pedido{}, err
 	}
@@ -269,13 +253,22 @@ func GetPedido(conn *sql.DB, id int) (Pedido, error) {
 	return p, rows.Err()
 }
 
-// ActualizarEstado cambia el estado de un pedido (usado desde el admin).
-// Un pedido siempre nace en EstadoPagado; de ahí en adelante el cambio de
-// estado es manual.
+// ActualizarEstado cambia el estado logístico de un pedido (usado desde el
+// admin). Solo aplica a pedidos ya pagados en adelante: uno que sigue en el
+// ciclo de pago o expiró no se puede "entregar" a mano.
 func ActualizarEstado(conn *sql.DB, pedidoID int, nuevoEstado string) error {
 	if !esEstadoValido(nuevoEstado) {
 		return ErrEstadoInvalido
 	}
-	_, err := conn.Exec(`UPDATE pedidos SET estado = $1 WHERE id = $2`, nuevoEstado, pedidoID)
-	return err
+	res, err := conn.Exec(
+		`UPDATE pedidos SET estado = $1 WHERE id = $2 AND estado = ANY($3)`,
+		nuevoEstado, pedidoID, pq.Array(EstadosValidos),
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrEstadoNoModificable
+	}
+	return nil
 }

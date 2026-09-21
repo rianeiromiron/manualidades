@@ -15,9 +15,13 @@ type Producto struct {
 	PrecioCompra    float64
 	PrecioVenta     float64
 	Activo          bool
-	Stock           float64
-	FotoPortada     string   // ruta de la primera foto, si existe
-	Fotos           []string // rutas de todas las fotos, en orden
+	Stock           float64 // existencia física según el kardex
+	// Disponible es Stock menos lo reservado por pedidos en pago. Lo calcula
+	// la tienda (tienda.ReservadoPorProducto); ListProductos/GetProducto lo
+	// dejan en 0 y el admin sigue usando Stock.
+	Disponible  float64
+	FotoPortada string   // ruta de la primera foto, si existe
+	Fotos       []string // rutas de todas las fotos, en orden
 }
 
 const productoListaSQL = `

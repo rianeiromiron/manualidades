@@ -21,6 +21,7 @@ escrito a mano, y deliberadamente mínimo (filtros, un carrito en
 | Mantenimiento 3 | Configuración del sitio: datos del negocio, logo, colores | ✅ Hecho |
 | Tienda — Fase 1 | Catálogo, carrito, checkout con pago **simulado** | ✅ Hecho |
 | Estado del pedido | Pagado → Procesando en bodega / Entregado / Cancelado, manejado desde admin | ✅ Hecho |
+| Reserva de stock | El checkout reserva el stock **antes** de cobrar (pedido `pendiente_pago`/`pagando`, con vencimiento) y solo descarga el kardex cuando el pago se aprueba | ✅ Hecho |
 | Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido | ✅ Hecho |
 | Usuarios y permisos | Superusuarios y usuarios administrativos con módulos asignables | ✅ Hecho |
 | Pasarela de pago | Registro de pagos (tabla `pagos`) + pasarela simulada (`pasarela-simulada`) con 3 modos: aprobar/rechazar/fallar | ✅ Hecho (simulada) |
@@ -161,42 +162,88 @@ comporta así en desarrollo.
   (aprobar / rechazar / fallar) sin necesidad de tarjetas reales.
 
 **Flujo de checkout** (`TiendaCheckoutConfirmar` en
-`internal/web/handlers_tienda.go`):
+`internal/web/handlers_tienda.go`, lógica en `internal/tienda/checkout.go`).
+La idea central: **reservar el stock antes de cobrar**, para que el cliente
+nunca pague por algo que ya no hay.
 
-1. `tienda.CotizarCarrito` calcula precios reales desde el catálogo y
-   valida stock — evita cobrar por algo que ya sabemos que no hay.
-2. `pasarela.Cobrar(...)` — esta llamada de red **nunca** ocurre dentro de
+1. `tienda.CotizarCarrito` calcula precios reales desde el catálogo (nunca
+   confía en lo que manda el navegador) y junta líneas repetidas. No valida
+   stock: eso lo hace el paso siguiente, con los productos bloqueados.
+2. `tienda.IniciarPago` — **transacción corta**: bloquea las filas de los
+   productos, valida el stock *disponible* (físico − reservas vigentes de
+   otros pedidos), crea el pedido en estado `pagando` con su vencimiento
+   (`expira_en`) y deja el intento de pago en `pagos` como `iniciado`. Si no
+   alcanza el stock → `409` y **no se cobra nada**. El kardex todavía no se
+   toca: el stock queda *reservado*, no descargado.
+3. `pasarela.Cobrar(...)` — esta llamada de red **nunca** ocurre dentro de
    una transacción SQL (una transacción no debe quedar abierta esperando a
    un tercero).
-3. Según el resultado:
-   - Falla técnica o rechazo → no se crea ningún pedido, pero sí se guarda
-     el intento en `pagos` (con `pedido_id NULL`) para que quede rastro.
-   - Aprobado → `tienda.CrearPedido(...)` hace, en una sola transacción
-     atómica, lo de siempre (pedido + líneas + kardex) más el registro del
-     pago ya aprobado (`pagos` con `pedido_id` seteado y la referencia real
-     que dio el proveedor).
-   - Aprobado pero `CrearPedido` falla (típicamente `ErrStockInsuficiente`
-     porque el stock se agotó entre la cotización y el cobro) → la
-     transacción hace rollback completo y el handler guarda el cobro en
-     `pagos` con estado **`por_conciliar`**, `pedido_id NULL` y el error en
-     `motivo_rechazo`. El cliente recibe la referencia del cobro y el
-     negocio lo **reembolsa o completa a mano** (no hay reversa automática
-     en la pasarela). Si ni siquiera ese registro se puede guardar, queda en
-     el log con la referencia y el monto.
-4. El admin puede ver **todos** los intentos (incluidos los que no
-   generaron pedido) en `/admin/pedidos/pagos`; los `por_conciliar` se
-   muestran como "Cobrado sin pedido — conciliar".
+4. Según el resultado:
+   - **Aprobado** → `tienda.ConfirmarPago` (transacción corta): escribe un
+     consumo por producto en el kardex, marca el pago `aprobado` y el pedido
+     `pagado`. Todo o nada.
+   - **Rechazado o falla técnica** → `tienda.RegistrarCobroFallido`: el
+     pago queda `rechazado`/`fallo` y el pedido **vuelve a `pendiente_pago`
+     conservando la reserva** (20 min) para que el cliente reintente.
+   - **Aprobado pero `ConfirmarPago` falla** (típicamente porque el admin
+     consumió stock físico a mano mientras el cliente pagaba) →
+     rollback completo y `tienda.MarcarPorConciliar`: el pago queda
+     **`por_conciliar`** con la referencia real del cobro y el motivo, y el
+     pedido pasa a `expirado`. El negocio lo **reembolsa o completa a mano**
+     (no hay reversa automática en la pasarela). Si ni ese registro se puede
+     guardar, queda en el log con la referencia y el monto.
 
-> **Limitación conocida:** entre la cotización (paso 1, sin lock) y el
-> `CrearPedido` hay una ventana en la que otro pedido puede llevarse el
-> stock. Está cubierta por el flujo `por_conciliar`, pero cerrarla del todo
-> exigiría reservar el stock antes de cobrar.
+**Estados de un pedido** (`internal/tienda/pedidos.go`):
+
+```
+pendiente_pago ──► pagando ──► pagado ──► procesando ──► entregado (o cancelado)
+      ▲               │           └── desde aquí en adelante: manual, desde el admin
+      └── rechazo ────┘
+pendiente_pago / pagando ──► expirado   (la reserva venció o se liberó)
+```
+
+Solo `pendiente_pago` y `pagando` **reservan stock**, y solo mientras
+`expira_en` no haya pasado. `pagado` en adelante ya está en el kardex.
+
+**Reintento de pago.** Al crear el pedido se genera un `token` aleatorio
+(UUID) que el servidor manda en la cookie `pedido_token` (HttpOnly,
+SameSite=Lax); el carrito sigue en `localStorage`. Si el pago falla y el
+cliente vuelve a presionar **Pagar** (otra tarjeta, corregir un dato), el
+servidor encuentra su pedido por el token y **lo reutiliza**: reemplaza sus
+líneas y datos por los actuales y reinicia el cobro, sin crear otro pedido.
+Se usa un token y no el `id` porque el `id` es secuencial y cualquiera podría
+consultar pedidos ajenos. Si la reserva ya venció, se crea un pedido nuevo y
+se vuelve a validar el stock (puede que ya no haya).
+
+**Doble clic / dos pestañas.** Mientras un pedido está en `pagando`, otro
+`IniciarPago` con el mismo token devuelve `ErrPedidoEnProceso` (`409`): no se
+cobra dos veces.
+
+**Vencimiento de reservas.** No depende de ningún proceso en segundo plano:
+todas las consultas de stock disponible ignoran las reservas con
+`expira_en < now()`, así que el stock se libera solo. Además,
+`tienda.LimpiarExpirados` corre cada minuto (goroutine `limpiarReservas` en
+`main.go`) solo para ordenar el estado: pasa a `expirado` los pedidos
+vencidos y, si un pedido murió a mitad del cobro (`pagando` vencido con el
+pago aún en `iniciado`), deja ese pago en `por_conciliar` porque no se sabe si
+la pasarela llegó a cobrar.
+
+**Qué ve el admin.** `/admin/pedidos` lista solo pedidos reales (pagados en
+adelante) y, aparte, los "Pendientes de pago" con la hora en que vence su
+reserva; bodega no ve ni puede cambiar de estado un pedido no pagado.
+`/admin/pedidos/pagos` muestra **todos** los intentos, incluidos los
+`rechazado`, `fallo`, `iniciado` y `por_conciliar`.
+
+> **Limitación conocida:** si la pasarela tarda más del timeout (10 s) en
+> responder, `pasarela.Cobrar` devuelve `ErrNoDisponible` y el intento se
+> registra como `fallo` aunque el proveedor pudiera haber cobrado igual. Un
+> proveedor real debería exponer una clave de idempotencia o un webhook para
+> resolver ese caso; con la pasarela simulada no hay forma de distinguirlo.
 
 Esto es exactamente el punto que la Fase 3 original del proyecto (ver
 Roadmap) señalaba como "el único lugar a reemplazar por una pasarela real":
 hoy ya está aislado ahí, solo faltaría cambiar `pasarela.BaseURL()` por la
 URL de un proveedor de verdad.
-esquema de base de datos ni los handlers.
 
 ### Config de base de datos (`internal/config`)
 
@@ -239,24 +286,46 @@ Tanto `*sql.DB` como `*sql.Tx` la satisfacen. Para registrar movimientos:
 - `inventario.CreateMovimiento(conn *sql.DB, ...)` abre su propia
   transacción (lo usa el panel de admin).
 - `inventario.CreateMovimientoTx(tx *sql.Tx, ...)` corre dentro de una
-  transacción ya abierta. Esto permite que `tienda.CrearPedido` registre el
-  pedido, sus líneas, **y** el movimiento de consumo correspondiente en el
-  kardex, todo dentro de una sola transacción SQL — si algo falla a la
-  mitad, no queda nada guardado.
+  transacción ya abierta. Esto permite que `tienda.ConfirmarPago` escriba el
+  movimiento de consumo de cada producto en el kardex, marque el pago
+  aprobado y el pedido pagado, todo dentro de una sola transacción SQL — si
+  algo falla a la mitad, no queda nada guardado.
 
 ### Concurrencia y transacciones
 
 El acceso a datos es `database/sql` + `lib/pq` con SQL a mano (sin ORM). Las
 operaciones de varios pasos usan el patrón `Begin` + `defer tx.Rollback()` +
-`Commit` (`CrearPedido`, `CrearUsuario`, `UpdateUsuario`, `CreateMovimiento`).
+`Commit` (`IniciarPago`, `ConfirmarPago`, `RegistrarCobroFallido`,
+`MarcarPorConciliar`, `LimpiarExpirados`, `CrearUsuario`, `UpdateUsuario`,
+`CreateMovimiento`).
 
 Para evitar **sobreventa** entre consumos concurrentes (Postgres corre en
 `READ COMMITTED`, así que leer el stock y luego insertar no es atómico),
 `inventario.BloquearProductos` hace `SELECT ... FOR UPDATE` sobre las filas
 de `productos` involucradas, **siempre en orden ascendente de id** para que
 dos transacciones con los mismos productos en distinto orden no queden en
-deadlock. `CrearPedido` bloquea todos los productos del pedido antes de
-validar stock, y `CreateMovimientoTx` bloquea el producto en cada consumo.
+deadlock. `IniciarPago` y `ConfirmarPago` bloquean todos los productos del
+pedido antes de validar stock, y `CreateMovimientoTx` bloquea el producto en
+cada consumo.
+
+**Orden de bloqueo único:** en todo `internal/tienda/checkout.go` se bloquean
+primero los productos (por id) y después la fila del pedido. Un orden
+consistente evita deadlocks entre el checkout, la confirmación y la limpieza.
+
+**Ninguna transacción espera a la pasarela.** El cobro ocurre entre dos
+transacciones cortas; el pedido en estado `pagando` es lo que impide que
+otro cliente se lleve el stock mientras tanto.
+
+**Reloj único.** Los vencimientos se escriben y se comparan con `now()` de
+Postgres (nunca con la hora del servidor web), para no depender de que ambos
+relojes estén sincronizados.
+
+**Stock disponible ≠ stock físico.** `Producto.Stock` es la existencia según
+el kardex (lo que ve el admin). `Producto.Disponible` = `Stock` − lo que
+retienen los pedidos en pago (`tienda.ReservadoPorProducto`); es lo que la
+tienda pública muestra y ofrece. Un consumo manual del admin se valida contra
+el stock **físico**: la realidad física manda sobre una reserva, y si eso deja
+sin stock a un pedido que ya se estaba cobrando, cae en `por_conciliar`.
 
 ### Seguridad del panel de administración
 
@@ -349,7 +418,7 @@ internal/
   db/                        Open/Test/EnsureDatabase
   inventario/                categorías, productos, fotos, movimientos (kardex)
   sitio/                     configuración del negocio (Mantenimiento 3)
-  tienda/                    pedidos + integración con el kardex
+  tienda/                    pedidos, pagos y checkout con reserva de stock (checkout.go)
   storage/                   interfaz Storage + implementación Local
   web/                       App struct + un archivo de handlers por área
 
@@ -416,9 +485,9 @@ dirección, teléfono, email, Facebook, Instagram, WhatsApp, ruta del logo, y
 
 | Tabla | Columnas clave | Notas |
 |---|---|---|
-| `pedidos` | `cliente_nombre`, `cliente_telefono`, `cliente_email`, `cliente_nit` (default `'CF'`), `metodo_entrega` (`recoger`/`domicilio`), `direccion_entrega`, `estado`, `total` | `estado` nace siempre en `'pagado'`; desde `/admin/pedidos/{id}` se cambia a `'procesando'` (en bodega), `'entregado'` o `'cancelado'` — ver `tienda.EstadosValidos` |
+| `pedidos` | `cliente_nombre`, `cliente_telefono`, `cliente_email`, `cliente_nit` (default `'CF'`), `metodo_entrega` (`recoger`/`domicilio`), `direccion_entrega`, `estado`, `total`, `expira_en`, `token` | `estado` nace en `'pagando'` (checkout en curso) y pasa a `'pagado'` solo cuando el cobro se aprueba; desde `/admin/pedidos/{id}` un pedido **pagado** se cambia a `'procesando'` (en bodega), `'entregado'` o `'cancelado'` — ver `tienda.EstadosValidos`. Los estados `'pendiente_pago'`, `'pagando'` y `'expirado'` pertenecen al ciclo de pago y el admin no los puede cambiar a mano. `expira_en` es hasta cuándo vale la reserva de stock (NULL si ya no reserva); `token` es el identificador aleatorio que el navegador guarda en la cookie `pedido_token` para reencontrar su pedido al reintentar (índice único parcial) |
 | `pedido_items` | `pedido_id`, `producto_id`, `nombre_producto`, `cantidad`, `precio_unitario`, `subtotal` | Nombre y precio son una **copia** del momento de la compra — si el producto cambia de nombre o precio después, el pedido histórico no se altera |
-| `pagos` | `pedido_id` (**nullable**), `metodo`, `monto`, `estado` (`aprobado`/`rechazado`/`fallo`/`por_conciliar`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo` | Registro de **todo intento de pago**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). `pedido_id` es nulo cuando el intento nunca llegó a generar un pedido (`rechazado` por el proveedor o `fallo` técnico de la pasarela) o cuando el cobro se aprobó pero el pedido no se pudo registrar (`por_conciliar`, requiere reembolso o conciliación manual) — ver `internal/pasarela` y `/admin/pedidos/pagos` |
+| `pagos` | `pedido_id` (**nullable**), `metodo`, `monto`, `estado` (`iniciado`/`aprobado`/`rechazado`/`fallo`/`por_conciliar`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo` | Registro de **todo intento de pago**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). Desde la reserva de stock, todo intento nace ya con `pedido_id` (el pedido se crea antes de cobrar), en estado `iniciado`, y se reemplaza por el desenlace real: `aprobado`, `rechazado` (lo dijo el proveedor), `fallo` (el proveedor no respondió) o `por_conciliar` (el cobro pudo aprobarse pero el pedido no se pudo confirmar, o el proceso murió a mitad del cobro; requiere verificar en la pasarela y reembolsar o completar a mano). `pedido_id` sigue siendo nullable por los pagos anteriores a este cambio — ver `internal/pasarela` y `/admin/pedidos/pagos` |
 
 ### Usuarios y permisos (`internal/usuarios/schema.go`)
 
@@ -457,8 +526,8 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET/POST | `/admin/mantenimiento/inventario/movimientos` | Kardex general + formulario de registro |
 | GET | `/admin/mantenimiento/inventario/reporte` | Reporte por rango de fechas, con filtros e impresión |
 | GET/POST | `/admin/sitio` | Mantenimiento 3: datos del negocio, logo, colores |
-| GET | `/admin/pedidos` | Lista de pedidos de la tienda |
-| GET | `/admin/pedidos/pagos` | Todos los intentos de pago, incluidos los rechazados/fallidos sin pedido |
+| GET | `/admin/pedidos` | Pedidos pagados de la tienda y, aparte, los pendientes de pago (reservan stock hasta que vencen) |
+| GET | `/admin/pedidos/pagos` | Todos los intentos de pago, incluidos los rechazados, fallidos, en curso y por conciliar |
 | GET/POST | `/admin/pedidos/{id}` | Detalle de un pedido; el POST cambia su estado |
 | GET | `/admin/usuarios` | Lista de usuarios (superusuario/administrativo) — **exclusivo del usuario `admin`** |
 | GET/POST | `/admin/usuarios/nuevo` | Crear usuario, con rol y módulos asignados |
@@ -474,7 +543,7 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET | `/producto/{id}` | Detalle de producto (galería, cantidad, agregar al carrito) |
 | GET | `/carrito` | Carrito (leído de `localStorage` por JS) |
 | GET | `/checkout` | Formulario de cliente + entrega + resumen |
-| POST | `/checkout/confirmar` | Recibe el carrito completo (JSON), valida stock, crea el pedido |
+| POST | `/checkout/confirmar` | Recibe el carrito completo (JSON): reserva el stock, cobra en la pasarela y, si aprueba, confirma el pedido y descarga el kardex. Usa la cookie `pedido_token` para reintentar sobre el mismo pedido |
 | GET | `/pedido/{id}/confirmacion` | Página de gracias; vacía el carrito del navegador |
 
 ### Recursos estáticos
@@ -550,23 +619,48 @@ el negocio elija se ve coherente, no solo la paleta de ejemplo.
 5. Al presionar **Pagar**, el navegador manda el carrito completo (con los
    datos de tarjeta) por `fetch()` a `POST /checkout/confirmar`. El servidor:
    - Recalcula los precios desde la base de datos (nunca confía en lo que
-     mande el navegador) y valida que haya stock suficiente.
+     mande el navegador).
+   - **Reserva el stock** creando el pedido en estado `pagando`. Si ya no
+     hay, responde sin haber cobrado nada.
    - Le pide el cobro a `pasarela-simulada` (ver "Pasarela de pago
      simulada" más arriba) — esa llamada nunca ocurre dentro de una
      transacción SQL.
-   - Si el proveedor rechaza el pago o falla, no se crea ningún pedido,
-     pero el intento queda registrado en `pagos`.
-   - Si aprueba, en **una sola transacción** inserta el pedido, sus
-     líneas, **y un movimiento de consumo por producto en el kardex**
-     (marcado como venta, con el precio real) — la misma tabla que usa el
-     Mantenimiento 2 — más el registro del pago con la referencia real del
-     proveedor. Si algo falla, no se guarda nada.
+   - Si el proveedor rechaza el pago o falla, el pedido queda
+     `pendiente_pago` con la reserva vigente (20 min) y el cliente puede
+     reintentar con otra tarjeta: una cookie (`pedido_token`) le hace
+     reencontrar el mismo pedido en vez de crear otro.
+   - Si aprueba, en **una sola transacción** escribe **un movimiento de
+     consumo por producto en el kardex** (marcado como venta, con el precio
+     real) — la misma tabla que usa el Mantenimiento 2 —, marca el pago con
+     la referencia real del proveedor y pasa el pedido a `pagado`. Si algo
+     falla, no se guarda nada y el cobro queda `por_conciliar`.
 6. **Confirmación** (`/pedido/{id}/confirmacion`): resumen del pedido, y el
    JS de esta página vacía el carrito del navegador.
 
-Como el checkout reusa exactamente la misma función que el kardex manual
-(`inventario.CreateMovimiento`), **el Reporte de inventario ya muestra las
+Como el checkout reusa exactamente la misma lógica que el kardex manual
+(`inventario.CreateMovimientoTx`), **el Reporte de inventario ya muestra las
 ventas online mezcladas con las manuales**, sin haber tocado ese código.
+
+---
+
+## Pruebas
+
+```
+go test ./...
+```
+
+- `internal/tienda/checkout_test.go` son pruebas de **integración** contra
+  Postgres: crean una base temporal (`manualidades_test_<n>`) en el servidor
+  configurado en `config.json`, le aplican las migraciones y la eliminan al
+  terminar — **nunca tocan la base real**. Cubren el flujo aprobado, el
+  rechazo con reintento sobre el mismo pedido, el doble clic, el stock
+  agotado al confirmar (`por_conciliar`), la expiración, la ausencia de
+  sobreventa con clientes concurrentes y la ausencia de deadlock con
+  productos en orden inverso. Si no hay un Postgres respondiendo, se saltan
+  (no fallan).
+- `internal/web/plantillas_test.go` ejecuta las plantillas que dependen de
+  los estados de pedido/pago y del stock disponible con datos de ejemplo
+  (no necesita base de datos).
 
 ---
 
@@ -582,6 +676,13 @@ ventas online mezcladas con las manuales**, sin haber tocado ese código.
   explícita: para la Fase 1 no hacía falta la complejidad de sesiones; el
   carrito se arma en el navegador y se envía completo una sola vez, al
   pagar.
+- **Reservar stock antes de cobrar, sin tocar el kardex.** Reservar
+  descontando y devolviendo con movimientos del kardex ensuciaría el historial
+  y los reportes con consumos e ingresos falsos. En cambio la reserva vive en
+  el pedido (`pendiente_pago`/`pagando` + `expira_en`), el stock disponible se
+  calcula restándola, y el kardex solo se escribe cuando el pago se aprueba.
+  Liberar una reserva es cambiar el estado de un pedido, sin dejar rastro
+  contable.
 - **Kardex inmutable.** `movimientos_inventario` no tiene edición ni borrado
   desde la UI a propósito — es un libro de movimientos, no una tabla de
   estado. El stock siempre se deriva sumando/restando, nunca se guarda como
@@ -627,9 +728,9 @@ ventas online mezcladas con las manuales**, sin haber tocado ese código.
   hace de proveedor falso (con 3 modos: aprobar/rechazar/fallar); no hay
   integración real con ningún procesador de pagos todavía (Fase 3). El
   punto de reemplazo ya está aislado en `internal/pasarela`.
-- **Sin preparación de pedidos en bodega todavía** (Fase 2): un pedido pasa
-  directo a `estado = 'pagado'` y ahí se queda; no hay flujo de
-  picking/empaque/envío.
+- **Sin preparación de pedidos en bodega todavía** (Fase 2): un pedido pagado
+  se queda en `estado = 'pagado'` hasta que alguien lo cambie a mano; no hay
+  flujo de picking/empaque/envío.
 - **Sin validación de NIT contra la SAT.** El campo existe y se guarda, pero
   no se verifica contra ningún servicio externo.
 - **Fotos y logo en disco local.** Correcto para desarrollo o un hosting con

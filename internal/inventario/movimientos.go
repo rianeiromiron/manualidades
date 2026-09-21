@@ -151,11 +151,8 @@ func BloquearProductos(tx *sql.Tx, ids []int) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := tx.Query(`SELECT id FROM productos WHERE id = ANY($1) ORDER BY id FOR UPDATE`, pq.Array(ids))
-	if err != nil {
-		return err
-	}
-	return rows.Close()
+	_, err := tx.Exec(`SELECT id FROM productos WHERE id = ANY($1) ORDER BY id FOR UPDATE`, pq.Array(ids))
+	return err
 }
 
 // CreateMovimiento registra un ingreso o consumo con la fecha de negocio

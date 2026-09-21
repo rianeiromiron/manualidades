@@ -175,8 +175,22 @@ comporta así en desarrollo.
      atómica, lo de siempre (pedido + líneas + kardex) más el registro del
      pago ya aprobado (`pagos` con `pedido_id` seteado y la referencia real
      que dio el proveedor).
+   - Aprobado pero `CrearPedido` falla (típicamente `ErrStockInsuficiente`
+     porque el stock se agotó entre la cotización y el cobro) → la
+     transacción hace rollback completo y el handler guarda el cobro en
+     `pagos` con estado **`por_conciliar`**, `pedido_id NULL` y el error en
+     `motivo_rechazo`. El cliente recibe la referencia del cobro y el
+     negocio lo **reembolsa o completa a mano** (no hay reversa automática
+     en la pasarela). Si ni siquiera ese registro se puede guardar, queda en
+     el log con la referencia y el monto.
 4. El admin puede ver **todos** los intentos (incluidos los que no
-   generaron pedido) en `/admin/pedidos/pagos`.
+   generaron pedido) en `/admin/pedidos/pagos`; los `por_conciliar` se
+   muestran como "Cobrado sin pedido — conciliar".
+
+> **Limitación conocida:** entre la cotización (paso 1, sin lock) y el
+> `CrearPedido` hay una ventana en la que otro pedido puede llevarse el
+> stock. Está cubierta por el flujo `por_conciliar`, pero cerrarla del todo
+> exigiría reservar el stock antes de cobrar.
 
 Esto es exactamente el punto que la Fase 3 original del proyecto (ver
 Roadmap) señalaba como "el único lugar a reemplazar por una pasarela real":
@@ -209,8 +223,8 @@ contacto sin que cada handler tenga que acordarse de pedirlos.
 
 ### Reutilización de lógica de negocio entre inventario y tienda
 
-`inventario.CreateMovimiento` y `inventario.StockActual` reciben una
-interfaz `querier` (no `*sql.DB` directamente):
+`inventario.StockActual` recibe una interfaz `querier` (no `*sql.DB`
+directamente):
 
 ```go
 type querier interface {
@@ -220,10 +234,29 @@ type querier interface {
 }
 ```
 
-Tanto `*sql.DB` como `*sql.Tx` la satisfacen. Esto permite que
-`tienda.CrearPedido` registre el pedido, sus líneas, **y** el movimiento de
-consumo correspondiente en el kardex, todo dentro de una sola transacción
-SQL — si algo falla a la mitad, no queda nada guardado.
+Tanto `*sql.DB` como `*sql.Tx` la satisfacen. Para registrar movimientos:
+
+- `inventario.CreateMovimiento(conn *sql.DB, ...)` abre su propia
+  transacción (lo usa el panel de admin).
+- `inventario.CreateMovimientoTx(tx *sql.Tx, ...)` corre dentro de una
+  transacción ya abierta. Esto permite que `tienda.CrearPedido` registre el
+  pedido, sus líneas, **y** el movimiento de consumo correspondiente en el
+  kardex, todo dentro de una sola transacción SQL — si algo falla a la
+  mitad, no queda nada guardado.
+
+### Concurrencia y transacciones
+
+El acceso a datos es `database/sql` + `lib/pq` con SQL a mano (sin ORM). Las
+operaciones de varios pasos usan el patrón `Begin` + `defer tx.Rollback()` +
+`Commit` (`CrearPedido`, `CrearUsuario`, `UpdateUsuario`, `CreateMovimiento`).
+
+Para evitar **sobreventa** entre consumos concurrentes (Postgres corre en
+`READ COMMITTED`, así que leer el stock y luego insertar no es atómico),
+`inventario.BloquearProductos` hace `SELECT ... FOR UPDATE` sobre las filas
+de `productos` involucradas, **siempre en orden ascendente de id** para que
+dos transacciones con los mismos productos en distinto orden no queden en
+deadlock. `CrearPedido` bloquea todos los productos del pedido antes de
+validar stock, y `CreateMovimientoTx` bloquea el producto en cada consumo.
 
 ### Seguridad del panel de administración
 
@@ -385,7 +418,7 @@ dirección, teléfono, email, Facebook, Instagram, WhatsApp, ruta del logo, y
 |---|---|---|
 | `pedidos` | `cliente_nombre`, `cliente_telefono`, `cliente_email`, `cliente_nit` (default `'CF'`), `metodo_entrega` (`recoger`/`domicilio`), `direccion_entrega`, `estado`, `total` | `estado` nace siempre en `'pagado'`; desde `/admin/pedidos/{id}` se cambia a `'procesando'` (en bodega), `'entregado'` o `'cancelado'` — ver `tienda.EstadosValidos` |
 | `pedido_items` | `pedido_id`, `producto_id`, `nombre_producto`, `cantidad`, `precio_unitario`, `subtotal` | Nombre y precio son una **copia** del momento de la compra — si el producto cambia de nombre o precio después, el pedido histórico no se altera |
-| `pagos` | `pedido_id` (**nullable**), `metodo`, `monto`, `estado` (`aprobado`/`rechazado`/`fallo`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo` | Registro de **todo intento de pago**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). `pedido_id` es nulo cuando el intento nunca llegó a generar un pedido (`rechazado` por el proveedor o `fallo` técnico de la pasarela) — ver `internal/pasarela` y `/admin/pedidos/pagos` |
+| `pagos` | `pedido_id` (**nullable**), `metodo`, `monto`, `estado` (`aprobado`/`rechazado`/`fallo`/`por_conciliar`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo` | Registro de **todo intento de pago**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). `pedido_id` es nulo cuando el intento nunca llegó a generar un pedido (`rechazado` por el proveedor o `fallo` técnico de la pasarela) o cuando el cobro se aprobó pero el pedido no se pudo registrar (`por_conciliar`, requiere reembolso o conciliación manual) — ver `internal/pasarela` y `/admin/pedidos/pagos` |
 
 ### Usuarios y permisos (`internal/usuarios/schema.go`)
 

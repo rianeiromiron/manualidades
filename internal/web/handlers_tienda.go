@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -237,14 +238,27 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		DireccionEntrega: body.DireccionEntrega,
 		Notas:            body.Notas,
 	}, lineas, total, tienda.ResultadoPago{Referencia: cobro.Referencia, Marca: cobro.Marca, Ultimos4: cobro.Ultimos4})
-	switch {
-	case errors.Is(err, inventario.ErrStockInsuficiente):
-		respondJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Ya no hay stock suficiente: " + err.Error()})
-	case err != nil:
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "El pago se aprobó, pero no se pudo registrar el pedido. Contacta al negocio con la referencia " + cobro.Referencia + "."})
-	default:
-		respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": pedidoID})
+	if err != nil {
+		// El cliente ya pagó pero el pedido no quedó guardado (CrearPedido
+		// hizo rollback completo). Se deja constancia del cobro como "por
+		// conciliar" para que el negocio lo reembolse o lo complete a mano.
+		motivo := "Pedido no registrado: " + err.Error()
+		if len(motivo) > 255 {
+			motivo = motivo[:255]
+		}
+		if _, regErr := tienda.RegistrarPago(conn, nil, tienda.MetodoTarjeta, total, tienda.EstadoPagoPorConciliar, cobro.Referencia, cobro.Marca, cobro.Ultimos4, motivo); regErr != nil {
+			log.Printf("tienda: cobro aprobado sin pedido NI registro (ref %s, Q%.2f): pedido: %v; registro: %v", cobro.Referencia, total, err, regErr)
+		}
+		msg := "El pago se aprobó, pero no se pudo registrar el pedido. Contacta al negocio con la referencia " + cobro.Referencia + "."
+		status := http.StatusInternalServerError
+		if errors.Is(err, inventario.ErrStockInsuficiente) {
+			msg = "Ya no hay stock suficiente (" + err.Error() + "). Tu pago se aprobó pero el pedido no se creó: el negocio te lo reembolsará. Referencia " + cobro.Referencia + "."
+			status = http.StatusConflict
+		}
+		respondJSON(w, status, map[string]any{"ok": false, "error": msg})
+		return
 	}
+	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": pedidoID})
 }
 
 func (a *App) TiendaConfirmacion(w http.ResponseWriter, r *http.Request) {

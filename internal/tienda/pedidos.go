@@ -135,7 +135,7 @@ type ResultadoPago struct {
 
 // CrearPedido inserta el pedido, sus líneas y el pago aprobado, y registra
 // un movimiento de consumo por producto en el kardex (reusando
-// inventario.CreateMovimiento) — todo en una sola transacción: si algo
+// inventario.CreateMovimientoTx) — todo en una sola transacción: si algo
 // falla a mitad de camino, no queda nada guardado. lineas/total deben venir
 // de CotizarCarrito, y pago de un cobro ya aprobado por la pasarela — esta
 // función no cobra nada, solo registra lo que ya se cobró.
@@ -149,6 +149,17 @@ func CrearPedido(conn *sql.DB, datos DatosPedido, lineas []LineaPedido, total fl
 		return 0, err
 	}
 	defer tx.Rollback()
+
+	// Bloquea todos los productos del pedido de una vez y en orden de id,
+	// antes de validar stock: evita sobreventa entre pedidos concurrentes y
+	// deadlocks entre pedidos que incluyen los mismos productos.
+	ids := make([]int, 0, len(lineas))
+	for _, l := range lineas {
+		ids = append(ids, l.ProductoID)
+	}
+	if err := inventario.BloquearProductos(tx, ids); err != nil {
+		return 0, err
+	}
 
 	nit := datos.ClienteNIT
 	if nit == "" {
@@ -180,7 +191,7 @@ func CrearPedido(conn *sql.DB, datos DatosPedido, lineas []LineaPedido, total fl
 		}
 
 		motivo := fmt.Sprintf("Venta online #%d", pedidoID)
-		if err := inventario.CreateMovimiento(tx, l.ProductoID, "consumo", l.Cantidad, motivo, true, l.PrecioUnitario, ahora); err != nil {
+		if err := inventario.CreateMovimientoTx(tx, l.ProductoID, "consumo", l.Cantidad, motivo, true, l.PrecioUnitario, ahora); err != nil {
 			if errors.Is(err, inventario.ErrStockInsuficiente) {
 				return 0, fmt.Errorf("%s: %w", l.Nombre, inventario.ErrStockInsuficiente)
 			}

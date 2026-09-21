@@ -22,6 +22,12 @@ const (
 	// EstadoPagoFallo es una falla técnica del proveedor (no respondió, o
 	// respondió con error) — distinto de un rechazo de negocio.
 	EstadoPagoFallo = "fallo"
+	// EstadoPagoPorConciliar es un cobro que la pasarela sí aprobó (el
+	// cliente ya pagó) pero cuyo pedido no se pudo registrar — por ejemplo
+	// porque el stock se agotó entre la cotización y el cobro. Requiere
+	// conciliación manual: reembolsar en la pasarela o completar el pedido a
+	// mano. Se guarda sin pedido_id y con el motivo en MotivoRechazo.
+	EstadoPagoPorConciliar = "por_conciliar"
 )
 
 type Pago struct {

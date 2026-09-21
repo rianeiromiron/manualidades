@@ -5,7 +5,9 @@
       <p class="eyebrow">Tienda</p>
       <h1>Intentos de pago</h1>
       <p class="lead">Incluye cobros aprobados, rechazados por el proveedor, y
-        fallas técnicas de la pasarela — no solo las ventas concretadas.</p>
+        fallas técnicas de la pasarela — no solo las ventas concretadas. Los
+        marcados «Cobrado sin pedido» son cobros aprobados cuyo pedido no se
+        pudo registrar: hay que reembolsarlos o completarlos a mano.</p>
     </div>
     <a href="/admin/pedidos" class="btn btn-ghost">← Ver pedidos</a>
   </div>
@@ -23,7 +25,7 @@
         <td>{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
         <td>
           <span class="estado-badge {{if eq .Estado "aprobado"}}estado-entregado{{else if eq .Estado "rechazado"}}estado-procesando{{else}}estado-cancelado{{end}}">
-            {{if eq .Estado "aprobado"}}Aprobado{{else if eq .Estado "rechazado"}}Rechazado{{else}}Falla del proveedor{{end}}
+            {{if eq .Estado "aprobado"}}Aprobado{{else if eq .Estado "rechazado"}}Rechazado{{else if eq .Estado "por_conciliar"}}Cobrado sin pedido — conciliar{{else}}Falla del proveedor{{end}}
           </span>
         </td>
         <td>Q {{printf "%.2f" .Monto}}</td>

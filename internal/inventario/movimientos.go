@@ -24,8 +24,8 @@ type Movimiento struct {
 var ErrStockInsuficiente = errors.New("stock insuficiente para ese consumo")
 
 // querier lo satisfacen tanto *sql.DB como *sql.Tx, para poder reusar
-// StockActual/CreateMovimiento dentro de una transacción más grande (ej. al
-// crear un pedido desde la tienda pública) sin duplicar la lógica.
+// StockActual dentro de una transacción más grande (ej. al crear un pedido
+// desde la tienda pública) sin duplicar la lógica.
 type querier interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	QueryRow(query string, args ...any) *sql.Row
@@ -141,16 +141,54 @@ func StockActual(conn querier, productoID int) (float64, error) {
 	return stock, err
 }
 
+// BloquearProductos toma un lock de fila (SELECT ... FOR UPDATE) sobre los
+// productos indicados hasta que termine la transacción. Serializa a quienes
+// consumen stock del mismo producto: sin esto, dos transacciones pueden leer
+// el mismo stock y ambas pasar la validación (READ COMMITTED). Los ids se
+// bloquean siempre en orden ascendente para que dos transacciones con los
+// mismos productos en distinto orden no queden en deadlock.
+func BloquearProductos(tx *sql.Tx, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := tx.Query(`SELECT id FROM productos WHERE id = ANY($1) ORDER BY id FOR UPDATE`, pq.Array(ids))
+	if err != nil {
+		return err
+	}
+	return rows.Close()
+}
+
 // CreateMovimiento registra un ingreso o consumo con la fecha de negocio
 // indicada (permite registrar hoy con retraso, o cargar movimientos de
 // días anteriores). esVenta y precioVenta solo se guardan para consumos
 // (un ingreso nunca es una venta); si esVenta es false, precioVenta se
 // descarta también. La fecha y hora de registro ("creado_en") las pone la
 // base de datos automáticamente y no se pueden elegir. Para un consumo
-// valida primero que no deje el stock en negativo.
-func CreateMovimiento(conn querier, productoID int, tipo string, cantidad float64, motivo string, esVenta bool, precioVenta float64, fecha time.Time) error {
+// valida primero que no deje el stock en negativo. Abre su propia
+// transacción; para incluirlo en una más grande usar CreateMovimientoTx.
+func CreateMovimiento(conn *sql.DB, productoID int, tipo string, cantidad float64, motivo string, esVenta bool, precioVenta float64, fecha time.Time) error {
+	tx, err := conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := CreateMovimientoTx(tx, productoID, tipo, cantidad, motivo, esVenta, precioVenta, fecha); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// CreateMovimientoTx es CreateMovimiento dentro de una transacción ya
+// abierta. Para un consumo bloquea primero la fila del producto, de modo que
+// la lectura del stock y el INSERT no se intercalen con otro consumo
+// concurrente del mismo producto.
+func CreateMovimientoTx(tx *sql.Tx, productoID int, tipo string, cantidad float64, motivo string, esVenta bool, precioVenta float64, fecha time.Time) error {
 	if tipo == "consumo" {
-		stock, err := StockActual(conn, productoID)
+		if err := BloquearProductos(tx, []int{productoID}); err != nil {
+			return err
+		}
+		stock, err := StockActual(tx, productoID)
 		if err != nil {
 			return err
 		}
@@ -163,7 +201,7 @@ func CreateMovimiento(conn querier, productoID int, tipo string, cantidad float6
 	if !esVenta {
 		precioVenta = 0
 	}
-	_, err := conn.Exec(
+	_, err := tx.Exec(
 		`INSERT INTO movimientos_inventario (producto_id, tipo, cantidad, motivo, es_venta, precio_venta, fecha) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		productoID, tipo, cantidad, motivo, esVenta, precioVenta, fecha,
 	)

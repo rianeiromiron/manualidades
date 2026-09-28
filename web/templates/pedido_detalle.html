@@ -3,7 +3,7 @@
   <p class="eyebrow">Tienda</p>
   <h1>Pedido #{{.Pedido.ID}}</h1>
   <p class="lead">
-    {{.Pedido.CreadoEn.Format "02/01/2006 15:04"}} · Estado:
+    {{localtime .Pedido.CreadoEn "02/01/2006 15:04"}} · Estado:
     <span class="estado-badge estado-{{.Pedido.Estado}}">
       {{if eq .Pedido.Estado "procesando"}}Procesando en bodega
       {{else if eq .Pedido.Estado "entregado"}}Entregado
@@ -42,7 +42,7 @@
 {{else}}
 <section class="panel panel-narrow">
   <p class="empty-hint">Este pedido no está pagado, así que su estado no se puede cambiar a mano.
-    {{if .Pedido.ExpiraEn}}La reserva de stock vence a las {{.Pedido.ExpiraEn.Format "15:04"}}.{{end}}</p>
+    {{if .Pedido.ExpiraEn}}La reserva de stock vence a las {{localtime .Pedido.ExpiraEn "15:04"}}.{{end}}</p>
 </section>
 {{end}}
 
@@ -72,7 +72,7 @@
     {{if .Pago.TarjetaUltimos4}} terminada en {{.Pago.TarjetaUltimos4}}{{end}}
   </p>
   <p>Monto: Q {{printf "%.2f" .Pago.Monto}} · Referencia: {{.Pago.Referencia}}<br>
-    {{.Pago.CreadoEn.Format "02/01/2006 15:04"}}</p>
+    {{localtime .Pago.CreadoEn "02/01/2006 15:04"}}</p>
   {{if .Pago.MotivoRechazo}}<p><strong>Motivo:</strong> {{.Pago.MotivoRechazo}}</p>{{end}}
 </section>
 {{end}}

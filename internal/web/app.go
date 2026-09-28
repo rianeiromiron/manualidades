@@ -4,10 +4,43 @@ import (
 	"database/sql"
 	"html/template"
 	"net/http"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"manualidades/internal/storage"
 )
+
+// localTime formatea una hora en la hora local del servidor. Las columnas
+// TIMESTAMPTZ de Postgres viajan como UTC hasta Go (lib/pq no las convierte),
+// y time.Time.Format no cambia de zona por sí solo: sin este paso, todas las
+// horas mostradas en el admin salían en UTC en vez de la hora local del
+// negocio. Acepta time.Time o *time.Time (nil da cadena vacía) para que las
+// plantillas puedan formatear ExpiraEn sin un {{if}} aparte.
+func localTime(t any, layout string) string {
+	switch v := t.(type) {
+	case time.Time:
+		return v.Local().Format(layout)
+	case *time.Time:
+		if v == nil {
+			return ""
+		}
+		return v.Local().Format(layout)
+	default:
+		return ""
+	}
+}
+
+var funcMap = template.FuncMap{"localtime": localTime}
+
+// parseTemplates parsea uno o más archivos con funcMap ya registrado
+// (html/template exige que las funciones existan antes del parseo). El
+// nombre raíz es el del primer archivo, igual que hace template.ParseFiles
+// por su cuenta, para no alterar cómo Execute()/ExecuteTemplate() encuentran
+// la plantilla en cada llamador.
+func parseTemplates(files ...string) *template.Template {
+	return template.Must(template.New(filepath.Base(files[0])).Funcs(funcMap).ParseFiles(files...))
+}
 
 // App agrupa las dependencias compartidas por los handlers: la conexión a
 // la base de datos (puede cambiar en caliente si se reconfigura desde
@@ -44,7 +77,7 @@ func (a *App) SetDB(conn *sql.DB) {
 // handler tenga que hacerlo a mano.
 func render(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
 	injectNav(r, data)
-	tmpl := template.Must(template.ParseFiles("web/templates/layout.html", "web/templates/"+page))
+	tmpl := parseTemplates("web/templates/layout.html", "web/templates/"+page)
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "error interno: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -72,7 +105,7 @@ func injectNav(r *http.Request, data map[string]any) {
 // renderAuth envuelve con el layout minimalista (sin menú) usado por las
 // pantallas de login y configuración inicial de acceso.
 func renderAuth(w http.ResponseWriter, page string, data map[string]any) {
-	tmpl := template.Must(template.ParseFiles("web/templates/layout_auth.html", "web/templates/"+page))
+	tmpl := parseTemplates("web/templates/layout_auth.html", "web/templates/"+page)
 	if err := tmpl.ExecuteTemplate(w, "layout_auth", data); err != nil {
 		http.Error(w, "error interno: "+err.Error(), http.StatusInternalServerError)
 	}
@@ -82,7 +115,7 @@ func renderAuth(w http.ResponseWriter, page string, data map[string]any) {
 // se usa para pedazos de HTML que se inyectan por fetch() en la misma
 // página (ej. el historial de movimientos de un producto).
 func renderFragment(w http.ResponseWriter, page string, data map[string]any) {
-	tmpl := template.Must(template.ParseFiles("web/templates/" + page))
+	tmpl := parseTemplates("web/templates/" + page)
 	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, "error interno: "+err.Error(), http.StatusInternalServerError)
 	}

@@ -19,7 +19,7 @@
     <tbody>
       {{range .Pedidos}}
       <tr>
-        <td>{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
         <td>{{if eq .MetodoEntrega "domicilio"}}Domicilio{{else}}Recoger en tienda{{end}}</td>
         <td>
@@ -54,7 +54,7 @@
     <tbody>
       {{range .Pendientes}}
       <tr>
-        <td>{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
         <td>
           <span class="estado-badge estado-{{.Estado}}">
@@ -62,7 +62,7 @@
           </span>
         </td>
         <td>Q {{printf "%.2f" .Total}}</td>
-        <td>{{if .ExpiraEn}}{{.ExpiraEn.Format "15:04"}}{{end}}</td>
+        <td>{{if .ExpiraEn}}{{localtime .ExpiraEn "15:04"}}{{end}}</td>
         <td class="cell-actions">
           <a href="/admin/pedidos/{{.ID}}" class="link-action">Ver</a>
         </td>

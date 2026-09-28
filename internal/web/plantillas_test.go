@@ -1,7 +1,6 @@
 package web
 
 import (
-	"html/template"
 	"strings"
 	"testing"
 	"time"
@@ -13,13 +12,12 @@ import (
 // Las plantillas se parsean al vuelo en cada petición (render/renderTienda),
 // así que un error de sintaxis o de campo solo se vería al abrir la página.
 // Este test ejecuta el bloque "content" de las que dependen de los estados de
-// pedido/pago y del stock disponible, con datos de ejemplo.
+// pedido/pago y del stock disponible, con datos de ejemplo. Usa parseTemplates
+// (la misma función de app.go) para que localtime esté disponible, igual que
+// en producción.
 func ejecutarContent(t *testing.T, archivo string, datos map[string]any) string {
 	t.Helper()
-	tmpl, err := template.ParseFiles("../../web/templates/" + archivo)
-	if err != nil {
-		t.Fatalf("%s: %v", archivo, err)
-	}
+	tmpl := parseTemplates("../../web/templates/" + archivo)
 	var sb strings.Builder
 	if err := tmpl.ExecuteTemplate(&sb, "content", datos); err != nil {
 		t.Fatalf("%s: %v", archivo, err)

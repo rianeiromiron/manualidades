@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -43,7 +42,7 @@ func (a *App) renderTienda(w http.ResponseWriter, page string, data map[string]a
 		merged[k] = v
 	}
 
-	tmpl := template.Must(template.ParseFiles("web/templates/layout_tienda.html", "web/templates/"+page))
+	tmpl := parseTemplates("web/templates/layout_tienda.html", "web/templates/"+page)
 	if err := tmpl.ExecuteTemplate(w, "layout_tienda", merged); err != nil {
 		http.Error(w, "error interno: "+err.Error(), http.StatusInternalServerError)
 	}

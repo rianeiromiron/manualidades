@@ -23,7 +23,7 @@
     <tbody>
       {{range .Pagos}}
       <tr>
-        <td>{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td>
           <span class="estado-badge {{if eq .Estado "aprobado"}}estado-entregado{{else if eq .Estado "rechazado"}}estado-procesando{{else}}estado-cancelado{{end}}">
             {{if eq .Estado "aprobado"}}Aprobado{{else if eq .Estado "rechazado"}}Rechazado{{else if eq .Estado "por_conciliar"}}Por conciliar{{else if eq .Estado "iniciado"}}En curso{{else}}Falla del proveedor{{end}}

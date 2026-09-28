@@ -96,7 +96,7 @@
         <td class="cell-muted">—</td>
         {{end}}
         <td>{{.Motivo}}</td>
-        <td class="cell-muted no-print">{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td class="cell-muted no-print">{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
       </tr>
       {{end}}
     </tbody>

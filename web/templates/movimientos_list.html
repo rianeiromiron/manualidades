@@ -91,7 +91,7 @@
         </td>
         <td>{{printf "%.2f" .Cantidad}}</td>
         <td>{{.Motivo}}</td>
-        <td class="cell-muted">{{.CreadoEn.Format "02/01/2006 15:04"}}</td>
+        <td class="cell-muted">{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
       </tr>
       {{end}}
     </tbody>

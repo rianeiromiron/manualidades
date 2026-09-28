@@ -253,6 +253,22 @@ func GetPedido(conn *sql.DB, id int) (Pedido, error) {
 	return p, rows.Err()
 }
 
+// PedidoPerteneceAToken indica si token es el que se generó al crear el
+// pedido id. Es la prueba de que quien pide ver un pedido es el navegador que
+// lo hizo: el id es secuencial y adivinable, el token no. Un token vacío (o un
+// pedido anterior a la columna token, que lo tiene NULL) nunca coincide.
+func PedidoPerteneceAToken(conn *sql.DB, id int, token string) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+	var existe bool
+	err := conn.QueryRow(
+		`SELECT EXISTS (SELECT 1 FROM pedidos WHERE id = $1 AND token = $2)`,
+		id, token,
+	).Scan(&existe)
+	return existe, err
+}
+
 // ActualizarEstado cambia el estado logístico de un pedido (usado desde el
 // admin). Solo aplica a pedidos ya pagados en adelante: uno que sigue en el
 // ciclo de pago o expiró no se puede "entregar" a mano.

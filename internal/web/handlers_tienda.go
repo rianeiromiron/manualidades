@@ -178,18 +178,23 @@ type checkoutConfirmarJSON struct {
 	TarjetaCVV        string              `json:"tarjeta_cvv"`
 }
 
-// cookiePedido guarda el token del pedido pendiente de este navegador, para
-// que un reintento de pago (otra tarjeta, corregir un dato) reutilice el
-// mismo pedido en vez de crear otro. Es HttpOnly: el JavaScript de la página
-// no la necesita ni debe leerla.
+// cookiePedido guarda el token del último pedido de este navegador. Sirve para
+// dos cosas: que un reintento de pago (otra tarjeta, corregir un dato)
+// reutilice el mismo pedido en vez de crear otro, y que solo ese navegador
+// pueda ver la página de confirmación (el id del pedido es secuencial). Es
+// HttpOnly: el JavaScript de la página no la necesita ni debe leerla.
 const cookiePedido = "pedido_token"
 
-func setCookiePedido(w http.ResponseWriter, r *http.Request, token string) {
+// vidaCookieConfirmacion es cuánto tiempo, tras pagar, el navegador puede
+// volver a abrir la confirmación de su pedido.
+const vidaCookieConfirmacion = 24 * time.Hour
+
+func setCookiePedido(w http.ResponseWriter, r *http.Request, token string, vida time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookiePedido,
 		Value:    token,
 		Path:     "/",
-		MaxAge:   int((tienda.TTLReserva + time.Hour).Seconds()),
+		MaxAge:   int(vida.Seconds()),
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
@@ -286,7 +291,7 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "No se pudo iniciar el pago. No se te cobró nada."})
 		return
 	}
-	setCookiePedido(w, r, intento.Token)
+	setCookiePedido(w, r, intento.Token, tienda.TTLReserva+time.Hour)
 
 	// 2. Cobrar — nunca dentro de una transacción SQL.
 	cobro, err := pasarela.Cobrar(pasarela.SolicitudCobro{
@@ -338,7 +343,10 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	borrarCookiePedido(w, r)
+	// La cookie NO se borra: es la llave para ver la confirmación de este
+	// pedido. Una compra nueva no la reutiliza (pedidoReutilizable ignora los
+	// pedidos pagados) y la reemplaza por su propio token.
+	setCookiePedido(w, r, intento.Token, vidaCookieConfirmacion)
 	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": intento.PedidoID})
 }
 
@@ -349,6 +357,17 @@ func (a *App) TiendaConfirmacion(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	// Solo el navegador que hizo el pedido (el que tiene su token en la
+	// cookie) puede ver la confirmación. Todo lo demás es un 404, igual que un
+	// pedido inexistente, para no revelar qué ids existen.
+	var token string
+	if c, err := r.Cookie(cookiePedido); err == nil {
+		token = c.Value
+	}
+	if ok, err := tienda.PedidoPerteneceAToken(conn, id, token); err != nil || !ok {
 		http.NotFound(w, r)
 		return
 	}

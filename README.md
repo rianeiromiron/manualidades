@@ -215,6 +215,16 @@ Se usa un token y no el `id` porque el `id` es secuencial y cualquiera podría
 consultar pedidos ajenos. Si la reserva ya venció, se crea un pedido nuevo y
 se vuelve a validar el stock (puede que ya no haya).
 
+**Quién puede ver la confirmación.** La cookie `pedido_token` no se borra al
+pagar: es la llave de `/pedido/{id}/confirmacion`. Esa página muestra el
+nombre, la dirección y el detalle del cliente, y como el `id` es secuencial,
+solo se sirve si el token de la cookie coincide con el del pedido
+(`tienda.PedidoPerteneceAToken`); en cualquier otro caso responde `404`, igual
+que un pedido inexistente. Tras un pago aprobado la cookie vive 24 horas. Una
+compra nueva no la reutiliza (los pedidos pagados se ignoran al buscar un
+pedido reintentable) y la reemplaza por el token del pedido nuevo. Los pedidos
+anteriores a la columna `token` no tienen confirmación pública.
+
 **Doble clic / dos pestañas.** Mientras un pedido está en `pagando`, otro
 `IniciarPago` con el mismo token devuelve `ErrPedidoEnProceso` (`409`): no se
 cobra dos veces.
@@ -544,7 +554,7 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET | `/carrito` | Carrito (leído de `localStorage` por JS) |
 | GET | `/checkout` | Formulario de cliente + entrega + resumen |
 | POST | `/checkout/confirmar` | Recibe el carrito completo (JSON): reserva el stock, cobra en la pasarela y, si aprueba, confirma el pedido y descarga el kardex. Usa la cookie `pedido_token` para reintentar sobre el mismo pedido |
-| GET | `/pedido/{id}/confirmacion` | Página de gracias; vacía el carrito del navegador |
+| GET | `/pedido/{id}/confirmacion` | Página de gracias; vacía el carrito del navegador. Solo la ve el navegador que hizo el pedido (cookie `pedido_token`); a cualquier otro le responde `404` |
 
 ### Recursos estáticos
 

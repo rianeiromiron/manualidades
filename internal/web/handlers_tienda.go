@@ -195,7 +195,7 @@ func setCookiePedido(w http.ResponseWriter, r *http.Request, token string, vida 
 		Path:     "/",
 		MaxAge:   int(vida.Seconds()),
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   esConexionSegura(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -207,7 +207,7 @@ func borrarCookiePedido(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   esConexionSegura(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }

@@ -378,7 +378,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request, kind, ident,
 		Expires:  time.Unix(expiry, 0),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   esConexionSegura(r),
 	})
 }
 
@@ -395,7 +395,7 @@ func borrarCookieSesion(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   esConexionSegura(r),
 	})
 }
 

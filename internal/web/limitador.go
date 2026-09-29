@@ -3,6 +3,7 @@ package web
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -96,6 +97,33 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// esConexionSegura indica si la request debe tratarse como HTTPS, para
+// decidir el atributo Secure de las cookies de sesión. r.TLS solo es no-nil
+// cuando el propio proceso de Go termina el TLS; detrás de un proxy que lo
+// termina antes (Railway, Render, un nginx delante) siempre sería nil, aunque
+// el sitio público sea https — y las cookies saldrían sin Secure sin que
+// nadie lo note.
+//
+// A diferencia de clientIP, aquí sí es seguro confiar en la cabecera
+// X-Forwarded-Proto sin haber configurado un proxy de confianza: como mucho,
+// alguien la falsifica para hacer creer al servidor que la conexión es HTTPS
+// cuando no lo es, y el único efecto es que el navegador reciba el atributo
+// Secure en una cookie sobre una conexión sin TLS — algo que los navegadores
+// ya rechazan guardar por su cuenta. Nunca se puede usar al revés (apagar
+// Secure cuando sí hace falta): sin la cabecera, el valor por defecto ya es
+// "no es HTTPS".
+func esConexionSegura(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if proto == "" {
+		return false
+	}
+	primero, _, _ := strings.Cut(proto, ",")
+	return strings.EqualFold(strings.TrimSpace(primero), "https")
 }
 
 // loginLimiter frena la fuerza bruta contra /admin/login: 5 intentos

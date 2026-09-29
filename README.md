@@ -392,6 +392,19 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
   página lo implemente bien. `/admin/logout` además solo acepta `POST` (antes
   aceptaba `GET`, así que un simple `<img>` o enlace en otra página podía
   cerrarle la sesión a quien la tuviera abierta).
+- **Cookies `Secure` detrás de un proxy.** El atributo `Secure` (que evita
+  que el navegador mande la cookie por HTTP) se decide con
+  `esConexionSegura` (`internal/web/limitador.go`), no con `r.TLS != nil`
+  directo: `r.TLS` solo es no-nil cuando el propio proceso de Go termina el
+  TLS, y detrás de un proxy que lo termina antes (Railway, Render, un nginx
+  delante) siempre sería `nil` aunque el sitio público sea https, dejando
+  las cookies sin `Secure` sin que nadie lo note. `esConexionSegura` además
+  confía en `X-Forwarded-Proto` cuando está presente — a diferencia de la
+  IP del limitador de intentos, aquí es seguro hacerlo: falsificarla como
+  mucho hace que el navegador reciba `Secure` sobre una conexión sin TLS, y
+  eso ya lo rechaza guardar por su cuenta; nunca se puede usar para apagar
+  `Secure` cuando sí hace falta. La misma función decide la cookie
+  `pedido_token` de la tienda.
 
 **Por qué este método y no otro:** para un panel de un solo administrador,
 sesión + contraseña con hash es más simple que OAuth/JWT (que resuelven

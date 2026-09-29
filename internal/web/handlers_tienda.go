@@ -184,6 +184,12 @@ type checkoutConfirmarJSON struct {
 // HttpOnly: el JavaScript de la página no la necesita ni debe leerla.
 const cookiePedido = "pedido_token"
 
+// maxCheckoutBytes limita el JSON que /checkout/confirmar acepta leer. Un
+// carrito real (aunque tenga muchos productos) no llega ni de cerca a esto;
+// sin el límite, json.Decode leería el body completo sin importar su tamaño,
+// abriendo la puerta a agotar memoria/CPU con una petición enorme.
+const maxCheckoutBytes = 1 << 20 // 1 MiB
+
 // vidaCookieConfirmacion es cuánto tiempo, tras pagar, el navegador puede
 // volver a abrir la confirmación de su pedido.
 const vidaCookieConfirmacion = 24 * time.Hour
@@ -237,6 +243,7 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	}
 	checkoutLimiter.Contar(ip)
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxCheckoutBytes)
 	var body checkoutConfirmarJSON
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Solicitud inválida."})

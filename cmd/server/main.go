@@ -133,8 +133,24 @@ func main() {
 	r.PathPrefix("/media/sitio/").Handler(http.StripPrefix("/media/sitio/", http.FileServer(http.Dir("media/sitio"))))
 
 	addr := ":8090"
+	// http.ListenAndServe(addr, r) a secas no pone ningún límite de tiempo:
+	// una conexión que manda el header o el body a medio byte por segundo
+	// (o que nunca lo termina) se queda abierta indefinidamente, agotando
+	// las conexiones disponibles del servidor (tipo "slowloris"). Los
+	// timeouts de abajo cierran esas conexiones sin afectar el uso normal:
+	// ReadTimeout/WriteTimeout dan margen de sobra a la subida de fotos
+	// (hasta maxUploadBytes) y al checkout (que espera hasta 10s a la
+	// pasarela, ver internal/pasarela/cliente.go).
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("manualidades escuchando en http://localhost%s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	log.Fatal(srv.ListenAndServe())
 }
 
 // limpiarReservas pasa a "expirado" los pedidos cuya reserva de stock venció

@@ -263,6 +263,26 @@ evita la paradoja de necesitar la conexión para leer los datos de conexión.
 `config.DSNMaintenance()` construye un DSN contra la base `postgres` (que
 siempre existe) para poder emitir `CREATE DATABASE` la primera vez.
 
+### Límites del servidor HTTP
+
+`http.ListenAndServe(addr, r)` a secas no pone ningún límite de tiempo: una
+conexión que manda el header o el body a medio byte por segundo (o que nunca
+lo termina) se queda abierta indefinidamente, agotando las conexiones
+disponibles del servidor (ataque tipo "slowloris"). `cmd/server/main.go` usa
+en cambio un `http.Server` con `ReadHeaderTimeout` (5s), `ReadTimeout` (30s),
+`WriteTimeout` (30s) e `IdleTimeout` (120s) — de sobra para la subida de fotos
+(hasta `maxUploadBytes`, 20 MB) y para el checkout, que puede esperar hasta
+10s a la pasarela (`internal/pasarela/cliente.go`).
+
+Por el mismo motivo, `TiendaCheckoutConfirmar` envuelve `r.Body` en
+`http.MaxBytesReader` antes de decodificar el JSON (`maxCheckoutBytes`, 1 MiB
+en `internal/web/handlers_tienda.go`): sin ese límite, `json.Decode` leería el
+body completo sin importar su tamaño. Un carrito real, aunque tenga muchos
+productos, no se acerca ni de lejos a ese tope. Los formularios del admin no
+necesitaron el mismo tratamiento: `r.ParseForm()` y `r.ParseMultipartForm()`
+de la librería estándar ya limitan por su cuenta lo que leen (esta última con
+el límite explícito `maxUploadBytes`).
+
 ### Render de plantillas
 
 Dos helpers en `internal/web/app.go`:

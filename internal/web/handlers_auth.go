@@ -279,6 +279,17 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 		renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "Formulario inválido.", "MessageKind": "error"})
 		return
 	}
+
+	// Límite de intentos por IP: sin esto, un script podía probar
+	// contraseñas sin parar contra /admin/login. Se cuenta por IP, no por
+	// usuario, para que nadie pueda bloquear al admin real solo fallando su
+	// password muchas veces desde otro lado (ver internal/web/limitador.go).
+	ip := clientIP(r)
+	if !loginLimiter.Permitido(ip) {
+		renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.", "MessageKind": "error"})
+		return
+	}
+
 	usuarioForm := r.FormValue("usuario")
 	password := r.FormValue("password")
 
@@ -289,6 +300,7 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	// separado de config.json: admin.json debe poder validarse sin BD.
 	admin, adminErr := config.LoadAdmin()
 	if adminErr == nil && usuarioForm == admin.Usuario && admin.VerifyPassword(password) {
+		loginLimiter.Limpiar(ip)
 		a.iniciarSesion(w, r, "admin", admin.Usuario, admin.SecretKey)
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
@@ -297,12 +309,14 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	if conn := a.DB(); conn != nil {
 		u, err := usuarios.GetUsuarioPorNombre(conn, usuarioForm)
 		if err == nil && u.Activo && usuarios.VerifyPassword(u, password) {
+			loginLimiter.Limpiar(ip)
 			a.iniciarSesion(w, r, "user", strconv.Itoa(u.ID), u.SecretKey)
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
 	}
 
+	loginLimiter.Contar(ip)
 	renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "Usuario o contraseña incorrectos.", "MessageKind": "error", "Usuario": usuarioForm})
 }
 

@@ -226,6 +226,17 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Límite de intentos por IP: sin esto, un script podía probar tarjetas
+	// sin parar, o acaparar reservas de stock repitiendo el checkout (ver
+	// internal/web/limitador.go). Se cuenta cada intento, apruebe o no,
+	// porque el límite es sobre la frecuencia, no sobre el resultado.
+	ip := clientIP(r)
+	if !checkoutLimiter.Permitido(ip) {
+		respondJSON(w, http.StatusTooManyRequests, map[string]any{"ok": false, "error": "Demasiados intentos. Espera unos minutos e inténtalo de nuevo."})
+		return
+	}
+	checkoutLimiter.Contar(ip)
+
 	var body checkoutConfirmarJSON
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Solicitud inválida."})
@@ -346,6 +357,7 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	// pedido. Una compra nueva no la reutiliza (pedidoReutilizable ignora los
 	// pedidos pagados) y la reemplaza por su propio token.
 	setCookiePedido(w, r, intento.Token, vidaCookieConfirmacion)
+	checkoutLimiter.Limpiar(ip)
 	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "pedido_id": intento.PedidoID})
 }
 

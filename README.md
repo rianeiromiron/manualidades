@@ -373,6 +373,11 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
   otra) a propósito, forzando a iniciar sesión de nuevo con la contraseña
   nueva. No hay flujo de "olvidé mi contraseña"; si se pierde, hay que
   borrar `admin.json` a mano y volver a pasar por `/admin/setup`.
+- **Límite de intentos.** `/admin/login` bloquea una IP 15 minutos tras 5
+  intentos fallidos en 10 minutos (`internal/web/limitador.go`, ver
+  "Limitaciones conocidas" para el alcance de este límite). Se cuenta por IP
+  y no por usuario, para que nadie pueda bloquear la cuenta del admin real
+  fallando su password muchas veces desde otro lugar.
 
 **Por qué este método y no otro:** para un panel de un solo administrador,
 sesión + contraseña con hash es más simple que OAuth/JWT (que resuelven
@@ -628,6 +633,8 @@ el negocio elija se ve coherente, no solo la paleta de ejemplo.
    eligen domicilio) — y notas.
 5. Al presionar **Pagar**, el navegador manda el carrito completo (con los
    datos de tarjeta) por `fetch()` a `POST /checkout/confirmar`. El servidor:
+   - Limita los intentos por IP (8 en 10 minutos) antes de procesar nada, para
+     frenar la prueba automatizada de tarjetas (`internal/web/limitador.go`).
    - Recalcula los precios desde la base de datos (nunca confía en lo que
      mande el navegador).
    - **Reserva el stock** creando el pedido en estado `pagando`. Si ya no
@@ -722,10 +729,14 @@ go test ./...
   Para un usuario de la tabla `usuarios`, el `admin` puede resetearle la
   contraseña desde `/admin/usuarios/{id}/editar`, pero no hay flujo de
   autoservicio ("te mandamos un correo").
-- **Sin límite de intentos de login.** No hay bloqueo tras varios intentos
-  fallidos (fuerza bruta) — razonable para un panel interno de bajo tráfico,
-  pero a reforzar si el admin llega a exponerse directamente a internet sin
-  nada delante.
+- **Límite de intentos en memoria, no persistente.** `internal/web/limitador.go`
+  frena la fuerza bruta en `/admin/login` (5 fallos por IP en 10 minutos →
+  bloqueo de 15 minutos) y la prueba automatizada de tarjetas en
+  `/checkout/confirmar` (8 intentos por IP en 10 minutos → bloqueo de 10
+  minutos). El contador vive en memoria del proceso: un reinicio del servidor
+  lo limpia. Razonable para un panel/tienda de bajo tráfico; una plataforma
+  con varias instancias del servidor necesitaría un límite compartido (Redis
+  u otro almacén central), porque cada instancia llevaría su propio contador.
 - **Datos anteriores a una migración no se pueden completar retroactivamente
   con precisión.** Ejemplos concretos ya ocurridos en este proyecto:
   - Movimientos registrados antes de separar `fecha` de `creado_en` quedaron

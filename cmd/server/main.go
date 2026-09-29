@@ -56,6 +56,9 @@ func main() {
 	go limpiarReservas(app)
 
 	r := mux.NewRouter()
+	// Cabeceras de seguridad en toda respuesta (admin, tienda y estáticos):
+	// ver internal/web/cabeceras.go.
+	r.Use(web.SecurityHeaders)
 
 	admin := r.PathPrefix("/admin").Subrouter()
 	admin.Use(app.RequireAdminAuth)

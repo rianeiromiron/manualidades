@@ -283,6 +283,33 @@ necesitaron el mismo tratamiento: `r.ParseForm()` y `r.ParseMultipartForm()`
 de la librería estándar ya limitan por su cuenta lo que leen (esta última con
 el límite explícito `maxUploadBytes`).
 
+### Cabeceras de seguridad
+
+`(web.SecurityHeaders)` (`internal/web/cabeceras.go`), montada con `r.Use(...)`
+sobre el router raíz en `main.go` (aplica a admin, tienda y estáticos por
+igual), agrega en toda respuesta:
+
+- `X-Content-Type-Options: nosniff` — evita que el navegador "adivine" un
+  tipo de contenido distinto al declarado (por ejemplo, una foto de producto
+  subida que en realidad fuera HTML).
+- `X-Frame-Options: DENY` — bloquea que el sitio se cargue dentro de un
+  `<iframe>` de otra página (clickjacking).
+- `Referrer-Policy: strict-origin-when-cross-origin` — no manda la URL
+  completa como referer a otros sitios al seguir un link externo.
+- `Content-Security-Policy` — limita de dónde puede cargar recursos la
+  página: solo el propio origen y Google Fonts (que ya usa `layout.html` /
+  `layout_tienda.html`), con `frame-ancestors 'none'` (lo mismo que
+  `X-Frame-Options`, pero lo reconocen también navegadores que ya soportan
+  CSP en vez de esa cabecera vieja) y `object-src 'none'`. **No** restringe
+  `'unsafe-inline'` en `script-src`/`style-src`: las plantillas usan JS y
+  estilos inline extensamente, y quitarlo implicaría moverlos a archivos
+  aparte en cada una — un cambio mucho más grande que agregar esta cabecera.
+  Sigue bloqueando lo más común: que un XSS inyecte un `<script src>`, un
+  `<object>` o un `<iframe>` de un dominio ajeno.
+- `Strict-Transport-Security` — solo cuando la conexión ya es HTTPS (ver
+  `esConexionSegura` en el punto anterior): mandarla sobre HTTP no tiene
+  efecto en los navegadores.
+
 ### Render de plantillas
 
 Dos helpers en `internal/web/app.go`:

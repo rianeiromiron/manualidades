@@ -17,6 +17,7 @@
 <section class="panel panel-narrow">
   <h3>Registrar movimiento</h3>
   <form method="post" action="/admin/mantenimiento/inventario/movimientos" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>
       <span>Categoría</span>
       <select id="categoriaFiltro">

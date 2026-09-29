@@ -20,6 +20,7 @@
 <section class="panel panel-narrow">
   <h3>Cambiar estado</h3>
   <form method="post" action="/admin/pedidos/{{.Pedido.ID}}" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="span-2">
       <span>Estado</span>
       <select name="estado">

@@ -71,6 +71,7 @@
           <a href="/admin/mantenimiento/inventario/productos/{{.ID}}/editar" class="link-action">Editar</a>
           <form method="post" action="/admin/mantenimiento/inventario/productos/{{.ID}}/eliminar"
                 onsubmit="return confirm('¿Eliminar {{.Nombre}}?');">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action link-danger">Eliminar</button>
           </form>
         </td>

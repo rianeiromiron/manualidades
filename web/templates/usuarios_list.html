@@ -42,15 +42,18 @@
           <a href="/admin/usuarios/{{.ID}}/editar" class="link-action">Editar</a>
           {{if .Activo}}
           <form method="post" action="/admin/usuarios/{{.ID}}/desactivar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action">Desactivar</button>
           </form>
           {{else}}
           <form method="post" action="/admin/usuarios/{{.ID}}/activar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action">Activar</button>
           </form>
           {{end}}
           <form method="post" action="/admin/usuarios/{{.ID}}/eliminar"
                 onsubmit="return confirm('¿Eliminar al usuario {{.Usuario}}? Esto no se puede deshacer.');">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action link-danger">Eliminar</button>
           </form>
         </td>

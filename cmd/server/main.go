@@ -59,10 +59,15 @@ func main() {
 
 	admin := r.PathPrefix("/admin").Subrouter()
 	admin.Use(app.RequireAdminAuth)
+	// RequireCSRF va después de RequireAdminAuth porque necesita la sesión
+	// (su SecretKey) que ese middleware deja en el contexto de la request.
+	admin.Use(app.RequireCSRF)
 
 	admin.HandleFunc("/setup", app.AdminSetup).Methods(http.MethodGet, http.MethodPost)
 	admin.HandleFunc("/login", app.AdminLogin).Methods(http.MethodGet, http.MethodPost)
-	admin.HandleFunc("/logout", app.AdminLogout).Methods(http.MethodGet, http.MethodPost)
+	// Solo POST: un <a> o <img> no debe poder cerrar la sesión de nadie con
+	// una simple petición GET.
+	admin.HandleFunc("/logout", app.AdminLogout).Methods(http.MethodPost)
 	admin.HandleFunc("/cambiar-password", app.AdminCambiarPassword).Methods(http.MethodGet, http.MethodPost)
 
 	// Home y cambio de contraseña son válidos para cualquier sesión, sin

@@ -10,6 +10,7 @@
 
 <section class="panel panel-narrow">
   <form method="post" action="{{.FormAction}}" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="span-2">
       <span>Usuario</span>
       <input type="text" name="usuario" value="{{.Usuario.Usuario}}" {{if not .EsNuevo}}readonly{{else}}required{{end}}>

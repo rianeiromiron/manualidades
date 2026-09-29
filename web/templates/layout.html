@@ -44,6 +44,7 @@
       </span>
       <a href="/admin/cambiar-password" class="{{if eq .Active "cuenta"}}active{{end}}" style="margin-left:14px;">Cuenta</a>
       <form method="post" action="/admin/logout" style="display:inline;">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button type="submit" class="link-action" style="margin-left:14px;">Cerrar sesión</button>
       </form>
     </nav>

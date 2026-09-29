@@ -12,6 +12,7 @@
 
 <section class="panel">
   <form method="post" action="/admin/mantenimiento/bd" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>
       <span>Host</span>
       <input type="text" name="host" value="{{.Config.Host}}" placeholder="localhost" required>

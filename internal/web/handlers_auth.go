@@ -39,6 +39,12 @@ type Sesion struct {
 	Usuario string
 	Rol     string   // "" para admin; "superusuario" | "administrativo" para user
 	Modulos []string // claves permitidas; solo se usa si Rol == "administrativo"
+
+	// secretKey es la SecretKey de admin.json o de la fila de usuarios que
+	// firmó esta sesión. No sale de este paquete: sirve para derivar el
+	// token CSRF de sus formularios (ver csrfToken/RequireCSRF), igual que
+	// ya sirve para firmar la cookie de sesión en loadSesion.
+	secretKey string
 }
 
 // TieneAcceso indica si esta sesión puede usar el módulo con esa clave.
@@ -109,6 +115,48 @@ func (a *App) RequireModule(clave string) func(http.Handler) http.Handler {
 	}
 }
 
+// csrfToken deriva, a partir de la SecretKey de la sesión activa, el valor
+// que sus formularios deben llevar en el campo oculto "csrf". Se calcula
+// igual que la firma de la cookie de sesión (HMAC-SHA256): cambia solo
+// cuando cambia esa llave (rotar la contraseña invalida también los
+// formularios ya renderizados, junto con la sesión) y nadie sin una sesión
+// válida de esa misma identidad lo puede reproducir.
+func csrfToken(secretKeyB64 string) string {
+	return computeSignature("csrf", secretKeyB64)
+}
+
+// RequireCSRF exige, en cada POST de /admin/* con sesión (login/logout/setup
+// quedan fuera: todavía no hay sesión que firme un token), que el formulario
+// incluya el campo oculto "csrf" con el valor que injectNav puso en la
+// página que lo generó. SameSite=Lax ya bloquea la mayoría de los POST entre
+// sitios en navegadores modernos; este token es la segunda capa, la que no
+// depende de que el navegador de quien visita la página lo implemente bien.
+func (a *App) RequireCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || publicAdminPaths[r.URL.Path] {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sesion, ok := sesionFromContext(r)
+		if !ok {
+			http.Error(w, "No autorizado.", http.StatusForbidden)
+			return
+		}
+		// Deja el formulario ya parseado (incluidos los POST con archivos,
+		// como productos o el logo del sitio) para que el handler real no
+		// tenga que volver a leer el body.
+		if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+			r.ParseForm()
+		}
+		esperado := csrfToken(sesion.secretKey)
+		if recibido := r.FormValue("csrf"); recibido == "" || !hmac.Equal([]byte(recibido), []byte(esperado)) {
+			http.Error(w, "Formulario expirado o inválido. Recarga la página e inténtalo de nuevo.", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireOnlyAdmin protege el mantenimiento de usuarios: es exclusivo del
 // usuario admin de admin.json, ni siquiera un superusuario puede entrar.
 func (a *App) RequireOnlyAdmin(next http.Handler) http.Handler {
@@ -146,7 +194,7 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 		if !hmac.Equal([]byte(sig), []byte(computeSignature(payloadEnc, admin.SecretKey))) {
 			return Sesion{}, false
 		}
-		return Sesion{Kind: "admin", Usuario: admin.Usuario}, true
+		return Sesion{Kind: "admin", Usuario: admin.Usuario, secretKey: admin.SecretKey}, true
 
 	case "user":
 		id, err := strconv.Atoi(ident)
@@ -171,7 +219,7 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 				return Sesion{}, false
 			}
 		}
-		return Sesion{Kind: "user", Usuario: u.Usuario, Rol: u.Rol, Modulos: modulos}, true
+		return Sesion{Kind: "user", Usuario: u.Usuario, Rol: u.Rol, Modulos: modulos, secretKey: u.SecretKey}, true
 
 	default:
 		return Sesion{}, false
@@ -334,7 +382,11 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request, kind, ident,
 	})
 }
 
-func (a *App) AdminLogout(w http.ResponseWriter, r *http.Request) {
+// borrarCookieSesion limpia la cookie de sesión con los mismos atributos con
+// los que iniciarSesion la creó. Un navegador identifica una cookie por
+// nombre + Path, no por sus demás atributos, pero mandarlos completos evita
+// sorpresas y deja explícito que sigue siendo la misma política.
+func borrarCookieSesion(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
@@ -342,7 +394,13 @@ func (a *App) AdminLogout(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   r.TLS != nil,
 	})
+}
+
+func (a *App) AdminLogout(w http.ResponseWriter, r *http.Request) {
+	borrarCookieSesion(w, r)
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
@@ -408,13 +466,6 @@ func (a *App) AdminCambiarPassword(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    "",
-		Path:     "/admin",
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-		HttpOnly: true,
-	})
+	borrarCookieSesion(w, r)
 	http.Redirect(w, r, "/admin/login?password_changed=1", http.StatusSeeOther)
 }

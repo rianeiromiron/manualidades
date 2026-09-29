@@ -94,6 +94,9 @@ func injectNav(r *http.Request, data map[string]any) {
 	}
 	data["CurrentRol"] = rolActual
 	data["CurrentUsuario"] = sesion.Usuario
+	// CSRF: cada formulario de una página de admin necesita este valor en un
+	// campo oculto (ver RequireCSRF, en handlers_auth.go).
+	data["CSRF"] = csrfToken(sesion.secretKey)
 
 	visibles := make(map[string]bool, len(todosLosModulos))
 	for _, clave := range todosLosModulos {

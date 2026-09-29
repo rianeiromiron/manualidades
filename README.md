@@ -378,6 +378,20 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
   "Limitaciones conocidas" para el alcance de este límite). Se cuenta por IP
   y no por usuario, para que nadie pueda bloquear la cuenta del admin real
   fallando su password muchas veces desde otro lugar.
+- **CSRF.** Cada POST de `/admin/*` con sesión (login/logout/setup quedan
+  fuera: todavía no hay sesión que firme un token) exige un campo oculto
+  `csrf` que coincida con el que `injectNav` puso en la página al
+  renderizarla (`(a *App) RequireCSRF`, montado con `admin.Use` en `main.go`
+  justo después de `RequireAdminAuth`, porque necesita la sesión que ese
+  middleware deja en el contexto). El valor es un HMAC-SHA256 de la
+  `SecretKey` de esa sesión (`csrfToken`, misma llave que firma la cookie):
+  nadie sin una sesión válida de esa identidad lo puede reproducir, y rotar
+  la contraseña lo invalida junto con la sesión. `SameSite=Lax` ya bloquea la
+  mayoría de los POST entre sitios en navegadores modernos; este token es la
+  segunda capa, la que no depende de que el navegador de quien visita la
+  página lo implemente bien. `/admin/logout` además solo acepta `POST` (antes
+  aceptaba `GET`, así que un simple `<img>` o enlace en otra página podía
+  cerrarle la sesión a quien la tuviera abierta).
 
 **Por qué este método y no otro:** para un panel de un solo administrador,
 sesión + contraseña con hash es más simple que OAuth/JWT (que resuelven

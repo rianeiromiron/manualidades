@@ -6,6 +6,7 @@
 
 <section class="panel panel-narrow">
   <form method="post" action="/admin/mantenimiento/inventario/categorias/{{.Categoria.ID}}/editar" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="span-2">
       <span>Nombre</span>
       <input type="text" name="nombre" value="{{.Categoria.Nombre}}" required>

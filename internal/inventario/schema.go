@@ -57,6 +57,20 @@ ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS es_venta BOOLEAN NOT
 -- Precio real al que se vendió, solo aplica cuando es_venta = true.
 ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS precio_venta NUMERIC(12,2) NOT NULL DEFAULT 0;
 
+-- Pedido de la tienda que originó este movimiento (NULL en los manuales).
+-- Sin clave foránea a propósito: la tabla pedidos la crea el paquete tienda
+-- después de esta migración. Los reportes separan "tienda" de "manual" con
+-- este campo.
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS pedido_id INTEGER;
+
+-- Ventas online anteriores a la columna: el número de pedido solo estaba en
+-- el motivo ("Venta online #12"). Se rellena una vez; idempotente porque solo
+-- toca filas con pedido_id NULL.
+UPDATE movimientos_inventario
+   SET pedido_id = substring(motivo from '^Venta online #([0-9]+)$')::int
+ WHERE pedido_id IS NULL AND es_venta AND motivo ~ '^Venta online #[0-9]+$';
+
+CREATE INDEX IF NOT EXISTS idx_movimientos_pedido ON movimientos_inventario(pedido_id);
 CREATE INDEX IF NOT EXISTS idx_productos_categoria ON productos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_fotos_producto ON producto_fotos(producto_id);
 CREATE INDEX IF NOT EXISTS idx_movimientos_producto ON movimientos_inventario(producto_id);

@@ -286,7 +286,7 @@ func ConfirmarPago(conn *sql.DB, in Intento, pago ResultadoPago) error {
 	ahora := time.Now()
 	motivo := fmt.Sprintf("Venta online #%d", in.PedidoID)
 	for _, l := range lineas {
-		if err := inventario.CreateMovimientoTx(tx, l.ProductoID, "consumo", l.Cantidad, motivo, true, l.PrecioUnitario, ahora); err != nil {
+		if err := inventario.CreateMovimientoPedidoTx(tx, in.PedidoID, l.ProductoID, "consumo", l.Cantidad, motivo, true, l.PrecioUnitario, ahora); err != nil {
 			if errors.Is(err, inventario.ErrStockInsuficiente) {
 				return fmt.Errorf("%s: %w", l.Nombre, inventario.ErrStockInsuficiente)
 			}

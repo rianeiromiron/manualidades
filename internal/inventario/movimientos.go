@@ -181,6 +181,13 @@ func CreateMovimiento(conn *sql.DB, productoID int, tipo string, cantidad float6
 // la lectura del stock y el INSERT no se intercalen con otro consumo
 // concurrente del mismo producto.
 func CreateMovimientoTx(tx *sql.Tx, productoID int, tipo string, cantidad float64, motivo string, esVenta bool, precioVenta float64, fecha time.Time) error {
+	return CreateMovimientoPedidoTx(tx, 0, productoID, tipo, cantidad, motivo, esVenta, precioVenta, fecha)
+}
+
+// CreateMovimientoPedidoTx es CreateMovimientoTx para un movimiento que nace
+// de un pedido de la tienda: guarda pedidoID (0 = movimiento manual, queda
+// NULL) para que los reportes distingan ventas de tienda y manuales.
+func CreateMovimientoPedidoTx(tx *sql.Tx, pedidoID, productoID int, tipo string, cantidad float64, motivo string, esVenta bool, precioVenta float64, fecha time.Time) error {
 	if tipo == "consumo" {
 		if err := BloquearProductos(tx, []int{productoID}); err != nil {
 			return err
@@ -199,8 +206,9 @@ func CreateMovimientoTx(tx *sql.Tx, productoID int, tipo string, cantidad float6
 		precioVenta = 0
 	}
 	_, err := tx.Exec(
-		`INSERT INTO movimientos_inventario (producto_id, tipo, cantidad, motivo, es_venta, precio_venta, fecha) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		productoID, tipo, cantidad, motivo, esVenta, precioVenta, fecha,
+		`INSERT INTO movimientos_inventario (producto_id, tipo, cantidad, motivo, es_venta, precio_venta, fecha, pedido_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, 0))`,
+		productoID, tipo, cantidad, motivo, esVenta, precioVenta, fecha, pedidoID,
 	)
 	return err
 }

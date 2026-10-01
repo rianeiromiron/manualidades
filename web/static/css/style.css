@@ -54,12 +54,15 @@ code {
 
 /* ---- Header ---- */
 .topbar {
+  --topbar-pad: max(clamp(20px, 5vw, 64px), calc((100% - 1180px) / 2 + clamp(20px, 5vw, 64px)));
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 22px clamp(20px, 5vw, 64px);
-  max-width: 1180px;
-  margin: 0 auto;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 56px;
+  padding: 0 var(--topbar-pad);
+  background: linear-gradient(90deg, var(--terracotta) 0%, var(--terracotta-deep) 100%);
+  border-bottom: 1px solid var(--terracotta-deep);
+  color: var(--cream);
 }
 
 .brand {
@@ -97,27 +100,77 @@ code {
   text-transform: uppercase;
 }
 
-.topnav { display: flex; gap: 6px; }
-.topnav a {
+/* En la barra del panel la marca va en crema y sin recuadro redondeado. */
+.topbar .brand { color: var(--cream); margin-right: 16px; white-space: nowrap; }
+.topbar .brand-mark {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--cream);
+  font-size: 22px;
+}
+.topbar .brand-text { font-size: 1.25rem; }
+.topbar .brand-text em { color: var(--gold); }
+
+.topnav, .topnav-right { display: flex; align-items: stretch; }
+.topnav-right { margin-left: auto; }
+.topnav a,
+.topnav-right a {
+  display: flex;
+  align-items: center;
   text-decoration: none;
-  color: var(--ink-soft);
+  color: var(--cream);
   font-weight: 700;
   font-size: 0.92rem;
-  padding: 8px 14px;
-  border-radius: 999px;
+  white-space: nowrap;
+  padding: 0 18px;
+  border-bottom: 3px solid transparent;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.topnav a:hover { background: var(--cream-deep); color: var(--ink); }
-.topnav a.active { background: var(--terracotta); color: var(--paper); }
+.topnav a:hover,
+.topnav-right a:hover { background: rgba(255, 253, 249, 0.14); }
+.topnav a.active,
+.topnav-right a.active {
+  background: var(--cream);
+  color: var(--terracotta-deep);
+  border-bottom-color: var(--gold);
+}
 .topnav-user {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 0 14px;
   font-weight: 700;
   font-size: 0.92rem;
-  color: var(--ink-soft);
+  white-space: nowrap;
+  color: var(--cream);
 }
-.topnav-user .chip { margin: 0; }
+.topnav-user .chip {
+  margin: 0;
+  border-radius: 0;
+  background: rgba(255, 253, 249, 0.16);
+  border-color: rgba(255, 253, 249, 0.4);
+  color: var(--cream);
+}
+.topnav-logout { display: flex; margin: 0; }
+.topnav-logout button {
+  align-self: center;
+  margin-left: 6px;
+  padding: 7px 14px;
+  background: none;
+  border: 1px solid var(--cream);
+  border-radius: 0;
+  color: var(--cream);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.topnav-logout button:hover { background: var(--cream); color: var(--terracotta-deep); }
 
 /* ---- Layout ---- */
 .page {
@@ -754,8 +807,22 @@ code {
 
 @media (max-width: 640px) {
   .form-grid { grid-template-columns: 1fr; }
-  .topnav { gap: 2px; }
-  .topnav a { padding: 8px 10px; font-size: 0.85rem; }
+}
+
+/* Pantallas angostas: la marca y las acciones quedan arriba y las opciones
+   pasan a una segunda fila con scroll horizontal, sin partir el texto. */
+@media (max-width: 1000px) {
+  .topbar { flex-wrap: wrap; gap: 0 8px; }
+  .topbar .brand { min-height: 52px; }
+  .topnav-right { order: 2; }
+  .topnav {
+    order: 3;
+    flex: 0 0 100%;
+    min-height: 44px;
+    overflow-x: auto;
+    border-top: 1px solid rgba(255, 253, 249, 0.25);
+  }
+  .topnav a, .topnav-right a { padding: 0 14px; }
 }
 
 /* ---- Impresión ---- */

@@ -35,19 +35,21 @@
       {{if eq .CurrentRol "admin"}}
       <a href="/admin/usuarios" class="{{if eq .Active "usuarios"}}active{{end}}">Usuarios</a>
       {{end}}
+    </nav>
+    <div class="topnav-right">
       <a href="/" target="_blank" rel="noopener">Ver tienda ↗</a>
-      <span class="topnav-user" style="margin-left:14px;" title="Sesión activa">
+      <span class="topnav-user" title="Sesión activa">
         {{.CurrentUsuario}}
         {{if eq .CurrentRol "admin"}}<span class="chip">admin</span>
         {{else if eq .CurrentRol "superusuario"}}<span class="chip">Superusuario</span>
         {{else}}<span class="chip">Administrativo</span>{{end}}
       </span>
-      <a href="/admin/cambiar-password" class="{{if eq .Active "cuenta"}}active{{end}}" style="margin-left:14px;">Cuenta</a>
-      <form method="post" action="/admin/logout" style="display:inline;">
+      <a href="/admin/cambiar-password" class="{{if eq .Active "cuenta"}}active{{end}}">Cuenta</a>
+      <form method="post" action="/admin/logout" class="topnav-logout">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
-        <button type="submit" class="link-action" style="margin-left:14px;">Cerrar sesión</button>
+        <button type="submit">Cerrar sesión</button>
       </form>
-    </nav>
+    </div>
   </header>
 
   <main class="page">

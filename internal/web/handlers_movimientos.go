@@ -156,7 +156,7 @@ type movimientoReporteVista struct {
 // tipo (ingresos/egresos) y, opcionalmente, solo ventas. Usa GET con
 // query params para que el resultado sea enlazable/recargable.
 func (a *App) Reporte(w http.ResponseWriter, r *http.Request) {
-	conn := a.requireDB(w, r, "inventario")
+	conn := a.requireDB(w, r, "reportes")
 	if conn == nil {
 		return
 	}
@@ -188,8 +188,8 @@ func (a *App) Reporte(w http.ResponseWriter, r *http.Request) {
 	hasta, err2 := time.Parse("2006-01-02", hastaStr)
 
 	data := map[string]any{
-		"Title":           "Reporte",
-		"Active":          "inventario",
+		"Title":           "Movimientos de inventario",
+		"Active":          "reportes",
 		"Desde":           desdeStr,
 		"Hasta":           hastaStr,
 		"IncluirIngresos": incluirIngresos,

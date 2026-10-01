@@ -1,0 +1,137 @@
+{{define "content"}}
+<section class="page-head no-print">
+  <p class="eyebrow"><a href="/admin/reportes" class="eyebrow-link">Reportes</a></p>
+  <h1>{{.R.Titulo}}</h1>
+  <p class="lead">{{.R.Lead}}</p>
+</section>
+
+{{if .Aviso}}
+<div class="alert alert-error">{{.Aviso}}</div>
+{{end}}
+
+<section class="panel no-print">
+  {{if .R.Filtros.Fecha}}
+  <div class="atajos">
+    {{range .Atajos}}<a href="{{.URL}}" class="atajo">{{.Texto}}</a>{{end}}
+  </div>
+  {{end}}
+  <form method="get" action="{{.RutaForm}}" class="form-grid form-filtros">
+    {{if .R.Filtros.Fecha}}
+    <label>
+      <span>Desde</span>
+      <input type="date" name="desde" value="{{.Desde}}" required>
+    </label>
+    <label>
+      <span>Hasta</span>
+      <input type="date" name="hasta" value="{{.Hasta}}" required>
+    </label>
+    {{end}}
+    {{if .R.Filtros.Categoria}}
+    <label>
+      <span>Categoría</span>
+      <select name="categoria">
+        <option value="0">Todas</option>
+        {{$sel := .CategoriaID}}
+        {{range .Categorias}}<option value="{{.ID}}" {{if eq .ID $sel}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    {{end}}
+    {{if .R.Filtros.Origen}}
+    <label>
+      <span>Origen de la venta</span>
+      <select name="origen">
+        <option value="" {{if eq .Origen ""}}selected{{end}}>Tienda y manuales</option>
+        <option value="tienda" {{if eq .Origen "tienda"}}selected{{end}}>Solo tienda</option>
+        <option value="manual" {{if eq .Origen "manual"}}selected{{end}}>Solo manuales</option>
+      </select>
+    </label>
+    {{end}}
+    {{if .R.Filtros.Agrup}}
+    <label>
+      <span>Agrupar por</span>
+      <select name="agrup">
+        <option value="day" {{if eq .Agrup "day"}}selected{{end}}>Día</option>
+        <option value="week" {{if eq .Agrup "week"}}selected{{end}}>Semana</option>
+        <option value="month" {{if eq .Agrup "month"}}selected{{end}}>Mes</option>
+      </select>
+    </label>
+    {{end}}
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Generar reporte</button>
+    </div>
+  </form>
+</section>
+
+{{if not .Aviso}}
+<section class="print-header">
+  <h2>Manualidades — {{.R.Titulo}}</h2>
+  {{if .R.Filtros.Fecha}}<p>Del {{.DesdeTexto}} al {{.HastaTexto}}</p>{{end}}
+</section>
+
+{{if .R.KPIs}}
+<section class="report-stats">
+  {{range .R.KPIs}}
+  <div class="stat-card">
+    <span class="stat-label">{{.Etiqueta}}</span>
+    <span class="stat-value">{{.Valor}}</span>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .R.Nota}}<p class="report-nota">{{.R.Nota}}</p>{{end}}
+
+{{range .R.Graficos}}
+{{if .SVG}}
+<section class="panel panel-grafico">
+  <h3>{{.Titulo}}</h3>
+  {{.SVG}}
+</section>
+{{end}}
+{{end}}
+
+<section class="panel">
+  {{if .R.Tabla.Filas}}
+  <div class="tabla-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        {{$num := .R.Tabla.Num}}
+        {{range $i, $c := .R.Tabla.Cols}}<th{{if index $num $i}} class="num"{{end}}>{{$c}}</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range .R.Tabla.Filas}}
+      <tr>
+        {{range $i, $c := .}}<td{{if index $num $i}} class="num"{{end}}>{{$c}}</td>{{end}}
+      </tr>
+      {{end}}
+    </tbody>
+    {{if .R.Tabla.Pie}}
+    <tfoot>
+      <tr>
+        {{range $i, $c := .R.Tabla.Pie}}<td{{if index $num $i}} class="num"{{end}}>{{$c}}</td>{{end}}
+      </tr>
+    </tfoot>
+    {{end}}
+  </table>
+  </div>
+  {{else}}
+  <p class="empty-hint">No hay datos para este filtro.</p>
+  {{end}}
+</section>
+
+{{if .R.Tabla.Filas}}
+<div class="form-actions no-print">
+  <a href="{{.CSVURL}}" class="btn btn-ghost">⬇ Descargar CSV</a>
+  <button type="button" id="btnImprimir" class="btn btn-ghost">🖨️ Imprimir</button>
+</div>
+<script>
+(function () {
+  var b = document.getElementById('btnImprimir');
+  if (b) b.addEventListener('click', function () { window.print(); });
+})();
+</script>
+{{end}}
+{{end}}
+{{end}}

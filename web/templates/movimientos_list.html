@@ -6,7 +6,7 @@
       <h1>Ingresos y consumos</h1>
       <p class="lead">Kardex de movimientos de stock por producto.</p>
     </div>
-    <a href="/admin/mantenimiento/inventario/reporte" class="btn btn-ghost">Ver reporte</a>
+    {{if index .ModulosVisibles "reportes"}}<a href="/admin/reportes/movimientos" class="btn btn-ghost">Ver reporte</a>{{end}}
   </div>
 </section>
 

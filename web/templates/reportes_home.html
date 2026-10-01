@@ -1,0 +1,51 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Reportes</p>
+  <h1>Cómo va el negocio</h1>
+  <p class="lead">Ventas, utilidad, inventario y pedidos, con gráficos y descarga en CSV.</p>
+</section>
+
+<section class="card-grid">
+  <a class="card" href="/admin/reportes/ventas">
+    <span class="card-icon">📈</span>
+    <h2>Ventas por período</h2>
+    <p>Lo vendido por día, semana o mes, separando tienda y ventas manuales.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+
+  <a class="card" href="/admin/reportes/productos">
+    <span class="card-icon">🏆</span>
+    <h2>Productos más vendidos</h2>
+    <p>Ranking por ingresos y unidades, y cuáles no se venden.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+
+  <a class="card" href="/admin/reportes/utilidad">
+    <span class="card-icon">💰</span>
+    <h2>Utilidad por producto</h2>
+    <p>Venta menos costo y margen de cada producto.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+
+  <a class="card" href="/admin/reportes/stock">
+    <span class="card-icon">🧺</span>
+    <h2>Stock valorizado</h2>
+    <p>Qué hay en bodega y cuánto vale al costo y al precio de venta.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+
+  <a class="card" href="/admin/reportes/pedidos">
+    <span class="card-icon">🛍️</span>
+    <h2>Pedidos por estado</h2>
+    <p>Pagados, pendientes, expirados y cancelados; cuántos se pierden antes de pagar.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+
+  <a class="card" href="/admin/reportes/movimientos">
+    <span class="card-icon">📊</span>
+    <h2>Movimientos de inventario</h2>
+    <p>Ingresos y egresos por rango de fechas, con filtro de solo ventas.</p>
+    <span class="card-cta">Ver reporte →</span>
+  </a>
+</section>
+{{end}}

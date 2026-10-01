@@ -100,7 +100,8 @@ func main() {
 	inv.HandleFunc("/productos/{id}/movimientos", app.ProductoMovimientosFragment).Methods(http.MethodGet)
 
 	inv.HandleFunc("/movimientos", app.MovimientosList).Methods(http.MethodGet, http.MethodPost)
-	inv.HandleFunc("/reporte", app.Reporte).Methods(http.MethodGet)
+	// El reporte de movimientos ahora vive en Reportes; el enlace viejo redirige.
+	inv.HandleFunc("/reporte", app.ReporteMovimientosRedirect).Methods(http.MethodGet)
 
 	sitioR := admin.PathPrefix("/sitio").Subrouter()
 	sitioR.Use(app.RequireModule("sitio"))
@@ -111,6 +112,16 @@ func main() {
 	pedidosR.HandleFunc("", app.PedidosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/pagos", app.PagosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/{id}", app.PedidoDetalle).Methods(http.MethodGet, http.MethodPost)
+
+	reportesR := admin.PathPrefix("/reportes").Subrouter()
+	reportesR.Use(app.RequireModule("reportes"))
+	reportesR.HandleFunc("", app.ReportesHome).Methods(http.MethodGet)
+	reportesR.HandleFunc("/ventas", app.ReporteVentas).Methods(http.MethodGet)
+	reportesR.HandleFunc("/productos", app.ReporteProductos).Methods(http.MethodGet)
+	reportesR.HandleFunc("/utilidad", app.ReporteUtilidad).Methods(http.MethodGet)
+	reportesR.HandleFunc("/stock", app.ReporteStock).Methods(http.MethodGet)
+	reportesR.HandleFunc("/pedidos", app.ReportePedidos).Methods(http.MethodGet)
+	reportesR.HandleFunc("/movimientos", app.Reporte).Methods(http.MethodGet)
 
 	// El mantenimiento de usuarios es exclusivo del usuario admin de
 	// admin.json: ni siquiera un superusuario puede entrar.

@@ -32,6 +32,9 @@
       {{if index .ModulosVisibles "pedidos"}}
       <a href="/admin/pedidos" class="{{if eq .Active "pedidos"}}active{{end}}">Pedidos</a>
       {{end}}
+      {{if index .ModulosVisibles "reportes"}}
+      <a href="/admin/reportes" class="{{if eq .Active "reportes"}}active{{end}}">Reportes</a>
+      {{end}}
       {{if eq .CurrentRol "admin"}}
       <a href="/admin/usuarios" class="{{if eq .Active "usuarios"}}active{{end}}">Usuarios</a>
       {{end}}

@@ -1,7 +1,7 @@
 {{define "content"}}
 <section class="page-head no-print">
-  <p class="eyebrow">Inventario</p>
-  <h1>Reporte de movimientos</h1>
+  <p class="eyebrow"><a href="/admin/reportes" class="eyebrow-link">Reportes</a></p>
+  <h1>Movimientos de inventario</h1>
   <p class="lead">Ingresos y egresos por rango de fechas.</p>
 </section>
 
@@ -10,7 +10,7 @@
 {{end}}
 
 <section class="panel panel-narrow no-print">
-  <form method="get" action="/admin/mantenimiento/inventario/reporte" class="form-grid">
+  <form method="get" action="/admin/reportes/movimientos" class="form-grid">
     <input type="hidden" name="f" value="1">
 
     <label>

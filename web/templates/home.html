@@ -45,6 +45,15 @@
   </a>
   {{end}}
 
+  {{if index .ModulosVisibles "reportes"}}
+  <a class="card" href="/admin/reportes">
+    <span class="card-icon">📈</span>
+    <h2>Reportes</h2>
+    <p>Ventas, utilidad, stock y pedidos con gráficos.</p>
+    <span class="card-cta">Ver reportes →</span>
+  </a>
+  {{end}}
+
   {{if eq .CurrentRol "admin"}}
   <a class="card" href="/admin/usuarios">
     <span class="card-icon">🔑</span>
@@ -56,7 +65,7 @@
   {{end}}
 </section>
 
-{{if and (not (index .ModulosVisibles "bd")) (not (index .ModulosVisibles "inventario")) (not (index .ModulosVisibles "sitio")) (not (index .ModulosVisibles "pedidos")) (ne .CurrentRol "admin")}}
+{{if and (not (index .ModulosVisibles "bd")) (not (index .ModulosVisibles "inventario")) (not (index .ModulosVisibles "sitio")) (not (index .ModulosVisibles "pedidos")) (not (index .ModulosVisibles "reportes")) (ne .CurrentRol "admin")}}
 <p class="empty-hint">No tienes módulos asignados todavía. Pide al administrador que te dé acceso.</p>
 {{end}}
 {{end}}

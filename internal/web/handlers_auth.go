@@ -28,7 +28,7 @@ var publicAdminPaths = map[string]bool{
 
 // todosLosModulos es el catálogo de claves de módulo que reconoce el nav
 // del admin (debe coincidir con lo sembrado en internal/usuarios/schema.go).
-var todosLosModulos = []string{"bd", "inventario", "sitio", "pedidos"}
+var todosLosModulos = []string{"bd", "inventario", "sitio", "pedidos", "reportes"}
 
 // Sesion representa la identidad autenticada de la request actual. Kind
 // distingue al usuario admin "raíz" (bootstrap, vive en admin.json) de un

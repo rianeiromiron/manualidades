@@ -754,6 +754,19 @@ go test ./...
 - `internal/web/plantillas_test.go` ejecuta las plantillas que dependen de
   los estados de pedido/pago y del stock disponible con datos de ejemplo
   (no necesita base de datos).
+- `internal/e2e/` son las pruebas de **seguridad de punta a punta**: levantan
+  el router real (`web.NewRouter`) con una base y un `admin.json` temporales
+  y lo ejercitan por HTTP y con un Chrome/Edge real (headless, vía
+  `chromedp`). Cubren: CSP sin scripts inline, XSS en el carrito, tope de 72
+  caracteres en contraseñas, sesiones revocables (cerrar una, cerrar las
+  demás, cookie robada tras cerrar sesión, cookies manipuladas o del formato
+  anterior, aislamiento entre usuarios, CSRF) y que los scripts movidos a
+  `web/static/js/` sigan funcionando en tienda y admin. Se ejecutan con
+  `go test ./internal/e2e/ -v` (~45 s). Sin Postgres se saltan todas; sin
+  Chrome/Edge solo las de navegador (se puede indicar uno con la variable
+  `E2E_CHROME`).
+- `internal/sesiones/sesiones_test.go` prueba el registro de sesiones contra
+  una base temporal.
 
 ---
 

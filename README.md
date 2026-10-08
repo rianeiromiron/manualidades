@@ -760,7 +760,12 @@ go test ./...
   `chromedp`). Cubren: CSP sin scripts inline, XSS en el carrito, tope de 72
   caracteres en contraseñas, sesiones revocables (cerrar una, cerrar las
   demás, cookie robada tras cerrar sesión, cookies manipuladas o del formato
-  anterior, aislamiento entre usuarios, CSRF) y que los scripts movidos a
+  anterior, aislamiento entre usuarios, CSRF), **inyección SQL** (`sqli_test.go`:
+  12 cargas clásicas —tautologías, UNION, consultas apiladas, inyección ciega
+  por tiempo— contra parámetros de URL, ids de ruta, formularios, login, el
+  JSON del checkout y la cookie de confirmación; comprueba huella de cada
+  tabla, datos guardados literales y que no se filtren errores de SQL) y que
+  los scripts movidos a
   `web/static/js/` sigan funcionando en tienda y admin. Se ejecutan con
   `go test ./internal/e2e/ -v` (~45 s). Sin Postgres se saltan todas; sin
   Chrome/Edge solo las de navegador (se puede indicar uno con la variable

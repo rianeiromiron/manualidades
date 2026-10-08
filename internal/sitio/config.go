@@ -1,6 +1,10 @@
 package sitio
 
-import "database/sql"
+import (
+	"database/sql"
+	"errors"
+	"regexp"
+)
 
 // Config son los datos editables desde /admin/sitio: identidad del negocio,
 // contacto, redes sociales, logo y los 4 colores base de la tienda pública.
@@ -31,9 +35,22 @@ func Get(conn *sql.DB) (Config, error) {
 	return c, err
 }
 
+// ErrColorInvalido se devuelve cuando alguno de los colores no es #RRGGBB.
+var ErrColorInvalido = errors.New("los colores deben tener el formato #RRGGBB (por ejemplo #FBE9EC)")
+
+var reColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
 // Save actualiza la fila única de configuración. No toca logo_ruta si la
 // llamada no la incluye explícitamente (ver SaveLogo).
 func Save(conn *sql.DB, c Config) error {
+	// Los colores acaban dentro de un bloque <style> de la tienda: solo se
+	// aceptan en formato #RRGGBB (también evita el error de la columna de 7
+	// caracteres, que mostraba un mensaje interno de la base de datos).
+	for _, color := range []string{c.ColorFondo, c.ColorTexto, c.ColorMarco, c.ColorAcento} {
+		if !reColor.MatchString(color) {
+			return ErrColorInvalido
+		}
+	}
 	_, err := conn.Exec(
 		`UPDATE config_sitio SET
 			nombre_negocio = $1, direccion = $2, telefono = $3, email = $4,

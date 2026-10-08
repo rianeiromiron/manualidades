@@ -10,10 +10,12 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -198,6 +200,23 @@ func (c *cliente) post(path string, datos url.Values) (*http.Response, string) {
 	c.t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, c.base+path, strings.NewReader(datos.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return c.hacer(req)
+}
+
+// postMultipart envía el formulario como multipart/form-data, que es lo que
+// exigen los formularios que aceptan archivos (productos, sitio).
+func (c *cliente) postMultipart(path string, datos url.Values) (*http.Response, string) {
+	c.t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, vs := range datos {
+		for _, v := range vs {
+			w.WriteField(k, v)
+		}
+	}
+	w.Close()
+	req, _ := http.NewRequest(http.MethodPost, c.base+path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
 	return c.hacer(req)
 }
 

@@ -126,12 +126,7 @@
   <a href="{{.CSVURL}}" class="btn btn-ghost">⬇ Descargar CSV</a>
   <button type="button" id="btnImprimir" class="btn btn-ghost">🖨️ Imprimir</button>
 </div>
-<script>
-(function () {
-  var b = document.getElementById('btnImprimir');
-  if (b) b.addEventListener('click', function () { window.print(); });
-})();
-</script>
+<script src="/static/js/admin-imprimir.js"></script>
 {{end}}
 {{end}}
 {{end}}

@@ -52,7 +52,7 @@
           </form>
           {{end}}
           <form method="post" action="/admin/usuarios/{{.ID}}/eliminar"
-                onsubmit="return confirm('¿Eliminar al usuario {{.Usuario}}? Esto no se puede deshacer.');">
+                data-confirm="¿Eliminar al usuario {{.Usuario}}? Esto no se puede deshacer.">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action link-danger">Eliminar</button>
           </form>

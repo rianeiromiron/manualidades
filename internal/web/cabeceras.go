@@ -5,14 +5,20 @@ import "net/http"
 // contentSecurityPolicy limita de dónde puede cargar recursos cada página:
 // nada de scripts, estilos o fuentes de dominios ajenos salvo los que el
 // sitio ya usa (Google Fonts), y bloquea que otro sitio la incruste en un
-// <iframe> (frame-ancestors). No se restringe 'unsafe-inline' en
-// script-src/style-src porque las plantillas usan JS y estilos inline
-// extensamente (ver web/templates); quitarlo implicaría mover ese código a
-// archivos aparte en cada plantilla, un cambio mucho más grande que agregar
-// esta cabecera. Sigue bloqueando lo más común: cargar un script, un
-// <object> o un iframe ajeno inyectado por un XSS.
+// <iframe> (frame-ancestors).
+//
+// script-src NO permite 'unsafe-inline': todo el JavaScript vive en archivos
+// de web/static/js y las plantillas no llevan <script> ni atributos de evento
+// (onclick, onsubmit...). Así, aunque un XSS lograra inyectar HTML, el
+// navegador no ejecutaría el script inyectado. Los datos que un script
+// necesita de la plantilla se pasan en atributos data-*. Lo vigila
+// TestPlantillasSinJavaScriptInline.
+//
+// style-src sí conserva 'unsafe-inline': las plantillas usan atributos style
+// y el tema de la tienda se inyecta como <style>; un CSS inyectado no puede
+// ejecutar código, así que el riesgo que queda es mucho menor.
 const contentSecurityPolicy = "default-src 'self'; " +
-	"script-src 'self' 'unsafe-inline'; " +
+	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
 	"font-src 'self' https://fonts.gstatic.com; " +
 	"img-src 'self'; " +

@@ -19,7 +19,7 @@
         <td class="cell-actions">
           <a href="/admin/mantenimiento/inventario/categorias/{{.ID}}/editar" class="link-action">Editar</a>
           <form method="post" action="/admin/mantenimiento/inventario/categorias/{{.ID}}/eliminar"
-                onsubmit="return confirm('¿Eliminar la categoría {{.Nombre}}?');">
+                data-confirm="¿Eliminar la categoría {{.Nombre}}?">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <button type="submit" class="link-action link-danger">Eliminar</button>
           </form>

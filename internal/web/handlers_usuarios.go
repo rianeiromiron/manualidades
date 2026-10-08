@@ -95,8 +95,8 @@ func (a *App) UsuarioNuevo(w http.ResponseWriter, r *http.Request) {
 	case usuario == "" || password == "":
 		a.renderUsuarioForm(w, r, conn, usuarios.Usuario{Usuario: usuario, Rol: rol}, moduloIDs, "Usuario y contraseña son obligatorios.")
 		return
-	case len(password) < 8:
-		a.renderUsuarioForm(w, r, conn, usuarios.Usuario{Usuario: usuario, Rol: rol}, moduloIDs, "La contraseña debe tener al menos 8 caracteres.")
+	case errorLargoPassword(password) != "":
+		a.renderUsuarioForm(w, r, conn, usuarios.Usuario{Usuario: usuario, Rol: rol}, moduloIDs, errorLargoPassword(password))
 		return
 	case password != confirmar:
 		a.renderUsuarioForm(w, r, conn, usuarios.Usuario{Usuario: usuario, Rol: rol}, moduloIDs, "Las contraseñas no coinciden.")
@@ -135,9 +135,9 @@ func (a *App) UsuarioEditar(w http.ResponseWriter, r *http.Request) {
 
 		var nuevaPassword *string
 		if nueva != "" {
-			if len(nueva) < 8 {
+			if msg := errorLargoPassword(nueva); msg != "" {
 				u, _ := usuarios.GetUsuario(conn, id)
-				a.renderUsuarioForm(w, r, conn, u, moduloIDs, "La contraseña debe tener al menos 8 caracteres.")
+				a.renderUsuarioForm(w, r, conn, u, moduloIDs, msg)
 				return
 			}
 			if nueva != confirmar {

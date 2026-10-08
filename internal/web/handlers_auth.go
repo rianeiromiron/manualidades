@@ -19,6 +19,26 @@ const (
 	sessionDuration   = 12 * time.Hour
 )
 
+const (
+	minPasswordBytes = 8
+	// bcrypt solo usa los primeros 72 bytes: más allá de eso ignora el resto
+	// (o, según la versión de x/crypto, falla). Se rechaza de entrada para no
+	// aceptar en silencio una contraseña que no se verifica completa.
+	maxPasswordBytes = 72
+)
+
+// errorLargoPassword devuelve el mensaje a mostrar si la contraseña no cumple
+// el largo permitido, o "" si es válida.
+func errorLargoPassword(p string) string {
+	switch {
+	case len(p) < minPasswordBytes:
+		return "La contraseña debe tener al menos 8 caracteres."
+	case len(p) > maxPasswordBytes:
+		return "La contraseña no puede superar los 72 caracteres."
+	}
+	return ""
+}
+
 // rutas de /admin que deben quedar accesibles sin haber iniciado sesión.
 var publicAdminPaths = map[string]bool{
 	"/admin/login":  true,
@@ -291,8 +311,8 @@ func (a *App) AdminSetup(w http.ResponseWriter, r *http.Request) {
 	case usuario == "" || password == "":
 		renderAuth(w, "admin_setup.html", map[string]any{"Title": "Configurar acceso", "Message": "Usuario y contraseña son obligatorios.", "MessageKind": "error", "Usuario": usuario})
 		return
-	case len(password) < 8:
-		renderAuth(w, "admin_setup.html", map[string]any{"Title": "Configurar acceso", "Message": "La contraseña debe tener al menos 8 caracteres.", "MessageKind": "error", "Usuario": usuario})
+	case errorLargoPassword(password) != "":
+		renderAuth(w, "admin_setup.html", map[string]any{"Title": "Configurar acceso", "Message": errorLargoPassword(password), "MessageKind": "error", "Usuario": usuario})
 		return
 	case password != confirmar:
 		renderAuth(w, "admin_setup.html", map[string]any{"Title": "Configurar acceso", "Message": "Las contraseñas no coinciden.", "MessageKind": "error", "Usuario": usuario})
@@ -427,8 +447,8 @@ func (a *App) AdminCambiarPassword(w http.ResponseWriter, r *http.Request) {
 	confirmar := r.FormValue("confirmar")
 
 	switch {
-	case len(nueva) < 8:
-		data["Message"], data["MessageKind"] = "La nueva contraseña debe tener al menos 8 caracteres.", "error"
+	case errorLargoPassword(nueva) != "":
+		data["Message"], data["MessageKind"] = errorLargoPassword(nueva), "error"
 		render(w, r, "admin_cambiar_password.html", data)
 		return
 	case nueva != confirmar:

@@ -70,6 +70,14 @@ UPDATE movimientos_inventario
    SET pedido_id = substring(motivo from '^Venta online #([0-9]+)$')::int
  WHERE pedido_id IS NULL AND es_venta AND motivo ~ '^Venta online #[0-9]+$';
 
+-- Corrección de errores sin reescribir el historial: anular un movimiento NO
+-- lo borra ni lo edita; crea un movimiento contrario (contraasiento) que
+-- apunta al original con anula_a. Un movimiento está "anulado" si alguna fila
+-- tiene anula_a = su id. El índice único impide anular dos veces el mismo
+-- movimiento, incluso con dos clics simultáneos.
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS anula_a INTEGER REFERENCES movimientos_inventario(id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_movimientos_anula_a ON movimientos_inventario(anula_a) WHERE anula_a IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_movimientos_pedido ON movimientos_inventario(pedido_id);
 CREATE INDEX IF NOT EXISTS idx_productos_categoria ON productos(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_fotos_producto ON producto_fotos(producto_id);

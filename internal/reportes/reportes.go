@@ -42,7 +42,8 @@ func (f Filtro) ventasDesde() (string, []any) {
 		LEFT JOIN pedidos pe ON pe.id = m.pedido_id
 		WHERE m.tipo = 'consumo' AND m.es_venta
 		  AND m.fecha BETWEEN $1 AND $2
-		  AND pe.estado IS DISTINCT FROM 'cancelado'`
+		  AND pe.estado IS DISTINCT FROM 'cancelado'
+		  AND NOT EXISTS (SELECT 1 FROM movimientos_inventario a WHERE a.anula_a = m.id)`
 	args := []any{f.Desde, f.Hasta}
 	if f.CategoriaID > 0 {
 		args = append(args, f.CategoriaID)

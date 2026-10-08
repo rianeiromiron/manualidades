@@ -78,21 +78,34 @@
   {{if .Movimientos}}
   <table class="data-table">
     <thead>
-      <tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th><th>Registrado</th></tr>
+      <tr><th>N°</th><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th><th>Registrado</th><th></th></tr>
     </thead>
     <tbody>
       {{range .Movimientos}}
-      <tr>
+      <tr{{if .AnuladoPor}} class="mov-anulado"{{end}}>
+        <td class="cell-muted">#{{.ID}}</td>
         <td>{{.Fecha.Format "02/01/2006"}}</td>
         <td class="cell-strong">{{.ProductoNombre}}</td>
         <td>
           {{if eq .Tipo "ingreso"}}<span class="tipo-ingreso">Ingreso</span>
           {{else}}<span class="tipo-consumo">Consumo</span>{{if .EsVenta}} <span class="tag-venta">Venta</span>{{end}}
           {{end}}
+          {{if .AnulaA}} <span class="tag-anulacion">Anulación de #{{.AnulaA}}</span>{{end}}{{if .AnuladoPor}} <span class="tag-anulado">Anulado</span>{{end}}
         </td>
         <td>{{printf "%.2f" .Cantidad}}</td>
         <td>{{.Motivo}}</td>
         <td class="cell-muted">{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
+        <td class="cell-actions">
+          {{if .Anulable}}
+          <form method="post" action="/admin/mantenimiento/inventario/movimientos/{{.ID}}/anular"
+                data-confirm="¿Anular el movimiento #{{.ID}} ({{if eq .Tipo "ingreso"}}ingreso{{else}}consumo{{end}} de {{printf "%.2f" .Cantidad}} de {{.ProductoNombre}})? Se registrará el movimiento contrario; no se borra nada.">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action link-danger">Anular</button>
+          </form>
+          {{else if .PedidoID}}
+          <span class="cell-muted">Pedido #{{.PedidoID}}</span>
+          {{end}}
+        </td>
       </tr>
       {{end}}
     </tbody>

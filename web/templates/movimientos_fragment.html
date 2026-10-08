@@ -9,12 +9,13 @@
   </thead>
   <tbody>
     {{range .Movimientos}}
-    <tr>
+    <tr{{if .Anulado}} class="mov-anulado"{{end}}>
       <td>{{.Fecha.Format "02/01/2006"}}</td>
       <td>
         {{if eq .Tipo "ingreso"}}<span class="tipo-ingreso">Ingreso</span>
         {{else}}<span class="tipo-consumo">Consumo</span>{{if .EsVenta}} <span class="tag-venta">Venta</span>{{end}}
         {{end}}
+        {{if .AnulaA}} <span class="tag-anulacion">Anulación de #{{.AnulaA}}</span>{{end}}{{if .Anulado}} <span class="tag-anulado">Anulado</span>{{end}}
       </td>
       <td>{{printf "%.2f" .Cantidad}}</td>
       <td class="cell-strong">{{printf "%.2f" .Saldo}}</td>

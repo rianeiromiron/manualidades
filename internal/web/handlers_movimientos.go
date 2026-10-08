@@ -3,6 +3,8 @@ package web
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -57,6 +59,41 @@ func (a *App) MovimientosList(w http.ResponseWriter, r *http.Request) {
 	a.renderMovimientos(w, r, conn, "", "")
 }
 
+// MovimientoAnular corrige un movimiento manual equivocado registrando el
+// movimiento contrario (ver inventario.AnularMovimiento): no borra ni edita
+// nada, así el historial queda completo.
+func (a *App) MovimientoAnular(w http.ResponseWriter, r *http.Request) {
+	conn := a.requireDB(w, r, "inventario")
+	if conn == nil {
+		return
+	}
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ahora := time.Now()
+	hoy := time.Date(ahora.Year(), ahora.Month(), ahora.Day(), 0, 0, 0, 0, time.UTC)
+
+	var msg, kind string
+	switch err := inventario.AnularMovimiento(conn, id, hoy); {
+	case err == nil:
+		msg, kind = fmt.Sprintf("Movimiento #%d anulado: se registró el movimiento contrario. Si querías corregir un dato, ahora registra el correcto.", id), "success"
+	case errors.Is(err, inventario.ErrStockInsuficiente):
+		msg, kind = "No se puede anular: ya se consumió parte de ese ingreso y el stock quedaría negativo.", "error"
+	case errors.Is(err, inventario.ErrMovimientoNoExiste),
+		errors.Is(err, inventario.ErrMovimientoAnulado),
+		errors.Is(err, inventario.ErrEsAnulacion),
+		errors.Is(err, inventario.ErrMovimientoDePedido):
+		msg, kind = "No se puede anular: "+err.Error()+".", "error"
+	default:
+		log.Printf("movimientos: no se pudo anular el movimiento %d: %v", id, err)
+		msg, kind = "No se pudo anular el movimiento.", "error"
+	}
+	a.renderMovimientos(w, r, conn, msg, kind)
+}
+
 func (a *App) renderMovimientos(w http.ResponseWriter, r *http.Request, conn *sql.DB, message, kind string) {
 	movimientos, err := inventario.ListMovimientos(conn, 100)
 	if err != nil {
@@ -95,6 +132,8 @@ type movimientoConSaldo struct {
 	Cantidad    float64
 	Saldo       float64
 	Motivo      string
+	AnulaA      int  // id del movimiento que esta fila anula (0 si no es una anulación)
+	Anulado     bool // el movimiento fue anulado después
 }
 
 // ProductoMovimientosFragment devuelve el historial de un producto como
@@ -135,7 +174,7 @@ func (a *App) ProductoMovimientosFragment(w http.ResponseWriter, r *http.Request
 		}
 		vista = append(vista, movimientoConSaldo{
 			Fecha: m.Fecha, CreadoEn: m.CreadoEn, Tipo: m.Tipo, EsVenta: m.EsVenta, PrecioVenta: m.PrecioVenta,
-			Cantidad: m.Cantidad, Saldo: saldo, Motivo: m.Motivo,
+			Cantidad: m.Cantidad, Saldo: saldo, Motivo: m.Motivo, AnulaA: m.AnulaA, Anulado: m.AnuladoPor != 0,
 		})
 	}
 
@@ -216,7 +255,7 @@ func (a *App) Reporte(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case m.Tipo == "ingreso":
 			totalIngresos += m.Cantidad
-		case m.EsVenta:
+		case m.EsVenta && m.AnuladoPor == 0: // una venta anulada ya no cuenta como venta
 			total = m.Cantidad * m.PrecioVenta
 			totalVentas += m.Cantidad
 			totalEgresos += m.Cantidad

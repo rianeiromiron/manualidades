@@ -58,6 +58,7 @@ func NewRouter(app *App) http.Handler {
 	inv.HandleFunc("/productos/{id}/movimientos", app.ProductoMovimientosFragment).Methods(http.MethodGet)
 
 	inv.HandleFunc("/movimientos", app.MovimientosList).Methods(http.MethodGet, http.MethodPost)
+	inv.HandleFunc("/movimientos/{id}/anular", app.MovimientoAnular).Methods(http.MethodPost)
 	// El reporte de movimientos ahora vive en Reportes; el enlace viejo redirige.
 	inv.HandleFunc("/reporte", app.ReporteMovimientosRedirect).Methods(http.MethodGet)
 

@@ -554,6 +554,20 @@ inmutable, igual que un libro contable real. El stock de un producto
 (`SUM(CASE WHEN tipo='ingreso' THEN cantidad ELSE -cantidad END)`), nunca se
 guarda como un campo aparte que se pueda desincronizar.
 
+**Cómo se corrige un error: anulando, no editando.** Si se registró un
+movimiento equivocado (por ejemplo 11 en vez de 1), el botón **Anular** de
+*Ingresos y consumos* no lo borra ni lo cambia: registra el movimiento
+contrario (un ingreso se anula con un consumo, y viceversa) por la misma
+cantidad, apuntando al original con `anula_a`. El original queda marcado como
+*Anulado* y la nueva fila como *Anulación de #N*; luego se registra el dato
+correcto. Así el historial queda completo y el stock se corrige solo. Reglas:
+solo movimientos **manuales** (los que nacen de un pedido de la tienda se
+corrigen cancelando el pedido); no se puede anular una anulación ni anular dos
+veces (lo garantiza un índice único, también con clics simultáneos); y anular
+un ingreso que ya se consumió falla si dejara el stock negativo. Los reportes
+de **ventas** y de utilidad ignoran las ventas anuladas. Está en
+`inventario.AnularMovimiento`.
+
 Dos fechas distintas y con propósitos distintos:
 - `fecha` (tipo `DATE`) — la fecha de negocio, elegida por quien registra el
   movimiento (permite cargar con retraso o corregir a qué día pertenece).
@@ -615,6 +629,7 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | POST | `/admin/mantenimiento/inventario/productos/{id}/fotos/{fotoId}/eliminar` | Eliminar una foto |
 | GET | `/admin/mantenimiento/inventario/productos/{id}/movimientos` | Fragmento HTML: historial de un producto (usado por fetch) |
 | GET/POST | `/admin/mantenimiento/inventario/movimientos` | Kardex general + formulario de registro |
+| POST | `/admin/mantenimiento/inventario/movimientos/{id}/anular` | Anular un movimiento manual (registra el contrario; no borra nada) |
 | GET | `/admin/mantenimiento/inventario/reporte` | Reporte por rango de fechas, con filtros e impresión |
 | GET/POST | `/admin/sitio` | Mantenimiento 3: datos del negocio, logo, colores |
 | GET | `/admin/pedidos` | Pedidos pagados de la tienda y, aparte, los pendientes de pago (reservan stock hasta que vencen) |

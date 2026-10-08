@@ -872,3 +872,17 @@ code {
   .report-stats { margin: 0 0 16px; }
   .data-table { font-size: 0.85rem; }
 }
+
+/* Movimientos anulados: se conservan en el historial, atenuados y tachados. */
+.mov-anulado td { color: #8A8F98; }
+.mov-anulado td:not(:last-child) { text-decoration: line-through; }
+.mov-anulado .tag-anulado, .mov-anulado .tipo-ingreso, .mov-anulado .tipo-consumo { display: inline-block; }
+.tag-anulado, .tag-anulacion {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #EEE9E4;
+  color: #6B5E55;
+}

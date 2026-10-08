@@ -567,7 +567,7 @@ func (a *App) AdminCambiarPassword(w http.ResponseWriter, r *http.Request) {
 // pueda cerrar una concreta (la de un equipo perdido, o una que no reconoce).
 func (a *App) AdminSesiones(w http.ResponseWriter, r *http.Request) {
 	sesion, _ := sesionFromContext(r)
-	data := map[string]any{"Title": "Sesiones activas", "Active": "cuenta", "SesionActual": sesion.ID}
+	data := map[string]any{"Title": "Sesiones activas", "Active": "sesiones", "SesionActual": sesion.ID}
 	switch r.URL.Query().Get("ok") {
 	case "revocada":
 		data["Message"], data["MessageKind"] = "Sesión cerrada.", "success"

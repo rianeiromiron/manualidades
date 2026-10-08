@@ -47,7 +47,8 @@
         {{else if eq .CurrentRol "superusuario"}}<span class="chip">Superusuario</span>
         {{else}}<span class="chip">Administrativo</span>{{end}}
       </span>
-      <a href="/admin/sesiones" class="{{if eq .Active "cuenta"}}active{{end}}">Cuenta</a>
+      <a href="/admin/cambiar-password" class="{{if eq .Active "cuenta"}}active{{end}}">Cuenta</a>
+      <a href="/admin/sesiones" class="{{if eq .Active "sesiones"}}active{{end}}">Sesiones</a>
       <form method="post" action="/admin/logout" class="topnav-logout">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button type="submit">Cerrar sesión</button>

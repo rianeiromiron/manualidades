@@ -1,0 +1,57 @@
+{{define "content"}}
+<section class="page-head">
+  <div class="page-head-row">
+    <div>
+      <p class="eyebrow">Cuenta</p>
+      <h1>Sesiones activas</h1>
+      <p class="lead">Estos son los accesos abiertos con tu usuario. Si no
+        reconoces alguno, ciérralo; si cambias tu contraseña se cierran todos.</p>
+    </div>
+    <a href="/admin/cambiar-password" class="btn">Cambiar contraseña</a>
+  </div>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel">
+  {{if .SinBD}}
+  <p class="empty-hint">Las sesiones individuales se registran en la base de
+    datos, que todavía no está configurada.</p>
+  {{else if .Sesiones}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Iniciada</th><th>Vence</th><th>Dirección IP</th><th>Navegador</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Sesiones}}
+      <tr>
+        <td>{{localtime .CreadaEn "02/01/2006 15:04"}}</td>
+        <td>{{localtime .ExpiraEn "02/01/2006 15:04"}}</td>
+        <td>{{.IP}}</td>
+        <td>{{.UserAgent}}</td>
+        <td class="cell-actions">
+          {{if eq .ID $.SesionActual}}
+          <span class="chip">Esta sesión</span>
+          {{end}}
+          <form method="post" action="/admin/sesiones/{{.ID}}/revocar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action link-danger">{{if eq .ID $.SesionActual}}Cerrar esta sesión{{else}}Cerrar{{end}}</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  <form method="post" action="/admin/sesiones/revocar-otras" style="margin-top:16px;">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn">Cerrar todas las demás sesiones</button>
+  </form>
+  {{else}}
+  <p class="empty-hint">No hay sesiones registradas. Si acabas de actualizar el
+    sistema, vuelve a iniciar sesión.</p>
+  {{end}}
+</section>
+{{end}}

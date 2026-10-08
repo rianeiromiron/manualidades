@@ -4,13 +4,18 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"manualidades/internal/config"
+	"manualidades/internal/sesiones"
 	"manualidades/internal/usuarios"
 )
 
@@ -59,6 +64,12 @@ type Sesion struct {
 	Usuario string
 	Rol     string   // "" para admin; "superusuario" | "administrativo" para user
 	Modulos []string // claves permitidas; solo se usa si Rol == "administrativo"
+
+	// ID es el identificador de esta sesión concreta (registro en la tabla
+	// sesiones) e Ident la identidad dueña: el nombre del admin o el id del
+	// usuario. Con ellos se lista y se revoca una sesión individual.
+	ID    string
+	Ident string
 
 	// secretKey es la SecretKey de admin.json o de la fila de usuarios que
 	// firmó esta sesión. No sale de este paquete: sirve para derivar el
@@ -200,7 +211,7 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 	if err != nil {
 		return Sesion{}, false
 	}
-	kind, ident, expiry, payloadEnc, sig, ok := decodeSessionToken(cookie.Value)
+	kind, ident, sid, expiry, payloadEnc, sig, ok := decodeSessionToken(cookie.Value)
 	if !ok || time.Now().Unix() >= expiry {
 		return Sesion{}, false
 	}
@@ -214,7 +225,12 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 		if !hmac.Equal([]byte(sig), []byte(computeSignature(payloadEnc, admin.SecretKey))) {
 			return Sesion{}, false
 		}
-		return Sesion{Kind: "admin", Usuario: admin.Usuario, secretKey: admin.SecretKey}, true
+		// El admin raíz debe poder entrar sin base de datos (es la forma de
+		// configurarla): sin BD no hay registro que consultar y vale la firma.
+		if conn := a.DB(); conn != nil && !sesionVigente(conn, sid, kind, ident) {
+			return Sesion{}, false
+		}
+		return Sesion{Kind: "admin", Usuario: admin.Usuario, secretKey: admin.SecretKey, ID: sid, Ident: ident}, true
 
 	case "user":
 		id, err := strconv.Atoi(ident)
@@ -232,6 +248,9 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 		if !hmac.Equal([]byte(sig), []byte(computeSignature(payloadEnc, u.SecretKey))) {
 			return Sesion{}, false
 		}
+		if !sesionVigente(conn, sid, kind, ident) {
+			return Sesion{}, false
+		}
 		var modulos []string
 		if u.Rol == usuarios.RolAdministrativo {
 			modulos, err = usuarios.ModulosClavesAsignadas(conn, id)
@@ -239,41 +258,52 @@ func (a *App) loadSesion(r *http.Request) (Sesion, bool) {
 				return Sesion{}, false
 			}
 		}
-		return Sesion{Kind: "user", Usuario: u.Usuario, Rol: u.Rol, Modulos: modulos, secretKey: u.SecretKey}, true
+		return Sesion{Kind: "user", Usuario: u.Usuario, Rol: u.Rol, Modulos: modulos, secretKey: u.SecretKey, ID: sid, Ident: ident}, true
 
 	default:
 		return Sesion{}, false
 	}
 }
 
-// buildSessionToken firma un payload "kind|ident|expiry" con la
+// sesionVigente consulta el registro de sesiones. Si la consulta falla se
+// trata como inválida: ante la duda, no se deja pasar.
+func sesionVigente(conn *sql.DB, sid, kind, ident string) bool {
+	ok, err := sesiones.Valida(conn, sid, kind, ident)
+	return err == nil && ok
+}
+
+// buildSessionToken firma un payload "kind|ident|expiry|sid" con la
 // SecretKey del dueño de esa identidad (admin.json o la fila de usuarios).
-func buildSessionToken(kind, ident, secretKeyB64 string, expiry int64) string {
-	payload := kind + "|" + ident + "|" + strconv.FormatInt(expiry, 10)
+// sid es el identificador de la sesión en la tabla sesiones; al ir dentro de
+// lo firmado, nadie puede cambiarlo para reutilizar otra sesión.
+func buildSessionToken(kind, ident, sid, secretKeyB64 string, expiry int64) string {
+	payload := kind + "|" + ident + "|" + strconv.FormatInt(expiry, 10) + "|" + sid
 	payloadEnc := base64.RawURLEncoding.EncodeToString([]byte(payload))
 	sig := computeSignature(payloadEnc, secretKeyB64)
 	return payloadEnc + "." + sig
 }
 
-func decodeSessionToken(token string) (kind, ident string, expiry int64, payloadEnc, sig string, ok bool) {
+func decodeSessionToken(token string) (kind, ident, sid string, expiry int64, payloadEnc, sig string, ok bool) {
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
-		return "", "", 0, "", "", false
+		return "", "", "", 0, "", "", false
 	}
 	payloadEnc, sig = parts[0], parts[1]
 	payload, err := base64.RawURLEncoding.DecodeString(payloadEnc)
 	if err != nil {
-		return "", "", 0, "", "", false
+		return "", "", "", 0, "", "", false
 	}
-	fields := strings.SplitN(string(payload), "|", 3)
-	if len(fields) != 3 {
-		return "", "", 0, "", "", false
+	// Las cookies anteriores a las sesiones individuales traían 3 campos y
+	// ya no valen: hay que iniciar sesión de nuevo una vez.
+	fields := strings.SplitN(string(payload), "|", 4)
+	if len(fields) != 4 || fields[3] == "" {
+		return "", "", "", 0, "", "", false
 	}
 	expiry, err = strconv.ParseInt(fields[2], 10, 64)
 	if err != nil {
-		return "", "", 0, "", "", false
+		return "", "", "", 0, "", "", false
 	}
-	return fields[0], fields[1], expiry, payloadEnc, sig, true
+	return fields[0], fields[1], fields[3], expiry, payloadEnc, sig, true
 }
 
 func computeSignature(payloadEnc, secretKeyB64 string) string {
@@ -369,7 +399,10 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	admin, adminErr := config.LoadAdmin()
 	if adminErr == nil && usuarioForm == admin.Usuario && admin.VerifyPassword(password) {
 		loginLimiter.Limpiar(ip)
-		a.iniciarSesion(w, r, "admin", admin.Usuario, admin.SecretKey)
+		if !a.iniciarSesion(w, r, "admin", admin.Usuario, admin.SecretKey) {
+			renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "No se pudo iniciar la sesión. Inténtalo de nuevo.", "MessageKind": "error", "Usuario": usuarioForm})
+			return
+		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -378,7 +411,10 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 		u, err := usuarios.GetUsuarioPorNombre(conn, usuarioForm)
 		if err == nil && u.Activo && usuarios.VerifyPassword(u, password) {
 			loginLimiter.Limpiar(ip)
-			a.iniciarSesion(w, r, "user", strconv.Itoa(u.ID), u.SecretKey)
+			if !a.iniciarSesion(w, r, "user", strconv.Itoa(u.ID), u.SecretKey) {
+				renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "No se pudo iniciar la sesión. Inténtalo de nuevo.", "MessageKind": "error", "Usuario": usuarioForm})
+				return
+			}
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
@@ -388,9 +424,26 @@ func (a *App) AdminLogin(w http.ResponseWriter, r *http.Request) {
 	renderAuth(w, "admin_login.html", map[string]any{"Title": "Iniciar sesión", "Message": "Usuario o contraseña incorrectos.", "MessageKind": "error", "Usuario": usuarioForm})
 }
 
-func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request, kind, ident, secretKey string) {
-	expiry := time.Now().Add(sessionDuration).Unix()
-	token := buildSessionToken(kind, ident, secretKey, expiry)
+// iniciarSesion registra la sesión nueva y deja su cookie. Devuelve false si
+// no se pudo registrar (la cookie no se envía): una sesión que no consta en
+// la tabla no pasaría la validación de todos modos.
+func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request, kind, ident, secretKey string) bool {
+	sid, err := sesiones.NuevoID()
+	if err != nil {
+		log.Printf("sesiones: no se pudo generar el id: %v", err)
+		return false
+	}
+	expira := time.Now().Add(sessionDuration)
+	// Sin base de datos solo puede entrar el admin raíz (ver loadSesion), y
+	// no hay dónde registrar la sesión.
+	if conn := a.DB(); conn != nil {
+		if err := sesiones.Crear(conn, sid, kind, ident, expira, clientIP(r), r.UserAgent()); err != nil {
+			log.Printf("sesiones: no se pudo registrar la sesión: %v", err)
+			return false
+		}
+	}
+	expiry := expira.Unix()
+	token := buildSessionToken(kind, ident, sid, secretKey, expiry)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
@@ -400,6 +453,7 @@ func (a *App) iniciarSesion(w http.ResponseWriter, r *http.Request, kind, ident,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   esConexionSegura(r),
 	})
+	return true
 }
 
 // borrarCookieSesion limpia la cookie de sesión con los mismos atributos con
@@ -419,7 +473,19 @@ func borrarCookieSesion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// AdminLogout cierra la sesión también en el servidor: además de borrar la
+// cookie, revoca su registro, para que una copia robada de la cookie deje de
+// servir al instante en vez de seguir válida hasta que venza.
 func (a *App) AdminLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		if kind, ident, sid, _, _, _, ok := decodeSessionToken(cookie.Value); ok {
+			if conn := a.DB(); conn != nil {
+				if err := sesiones.Revocar(conn, sid, kind, ident); err != nil {
+					log.Printf("sesiones: no se pudo revocar al cerrar sesión: %v", err)
+				}
+			}
+		}
+	}
 	borrarCookieSesion(w, r)
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
@@ -486,6 +552,81 @@ func (a *App) AdminCambiarPassword(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Rotar la llave ya invalida todas las cookies de esta identidad; se
+	// marcan también como revocadas para que no sigan apareciendo en la lista.
+	if conn := a.DB(); conn != nil {
+		if err := sesiones.RevocarTodas(conn, sesion.Kind, sesion.Ident); err != nil {
+			log.Printf("sesiones: no se pudieron revocar al cambiar la contraseña: %v", err)
+		}
+	}
 	borrarCookieSesion(w, r)
 	http.Redirect(w, r, "/admin/login?password_changed=1", http.StatusSeeOther)
+}
+
+// AdminSesiones lista las sesiones vigentes de la identidad actual para que
+// pueda cerrar una concreta (la de un equipo perdido, o una que no reconoce).
+func (a *App) AdminSesiones(w http.ResponseWriter, r *http.Request) {
+	sesion, _ := sesionFromContext(r)
+	data := map[string]any{"Title": "Sesiones activas", "Active": "cuenta", "SesionActual": sesion.ID}
+	switch r.URL.Query().Get("ok") {
+	case "revocada":
+		data["Message"], data["MessageKind"] = "Sesión cerrada.", "success"
+	case "otras":
+		data["Message"], data["MessageKind"] = "Se cerraron las demás sesiones.", "success"
+	}
+
+	conn := a.DB()
+	if conn == nil {
+		data["SinBD"] = true
+		render(w, r, "admin_sesiones.html", data)
+		return
+	}
+	lista, err := sesiones.Activas(conn, sesion.Kind, sesion.Ident)
+	if err != nil {
+		log.Printf("sesiones: no se pudieron listar: %v", err)
+		data["Message"], data["MessageKind"] = "No se pudo leer la lista de sesiones.", "error"
+	}
+	data["Sesiones"] = lista
+	render(w, r, "admin_sesiones.html", data)
+}
+
+// AdminSesionRevocar cierra una sesión concreta de la identidad actual. Si es
+// la propia, además borra la cookie y manda a iniciar sesión.
+func (a *App) AdminSesionRevocar(w http.ResponseWriter, r *http.Request) {
+	sesion, _ := sesionFromContext(r)
+	id := mux.Vars(r)["id"]
+	conn := a.DB()
+	if conn == nil {
+		http.Error(w, "Base de datos no disponible.", http.StatusServiceUnavailable)
+		return
+	}
+	// Revocar filtra por kind+ident: nadie puede cerrar sesiones ajenas.
+	if err := sesiones.Revocar(conn, id, sesion.Kind, sesion.Ident); err != nil {
+		log.Printf("sesiones: no se pudo revocar: %v", err)
+		http.Error(w, "No se pudo cerrar la sesión.", http.StatusInternalServerError)
+		return
+	}
+	if id == sesion.ID {
+		borrarCookieSesion(w, r)
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/sesiones?ok=revocada", http.StatusSeeOther)
+}
+
+// AdminSesionesRevocarOtras cierra todas las sesiones de la identidad actual
+// menos la que está usando.
+func (a *App) AdminSesionesRevocarOtras(w http.ResponseWriter, r *http.Request) {
+	sesion, _ := sesionFromContext(r)
+	conn := a.DB()
+	if conn == nil {
+		http.Error(w, "Base de datos no disponible.", http.StatusServiceUnavailable)
+		return
+	}
+	if err := sesiones.RevocarOtras(conn, sesion.Kind, sesion.Ident, sesion.ID); err != nil {
+		log.Printf("sesiones: no se pudieron revocar las demás: %v", err)
+		http.Error(w, "No se pudieron cerrar las sesiones.", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/sesiones?ok=otras", http.StatusSeeOther)
 }

@@ -600,6 +600,8 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET/POST | `/admin/login` | Iniciar sesión |
 | GET/POST | `/admin/logout` | Cerrar sesión |
 | GET/POST | `/admin/cambiar-password` | Cambiar la contraseña (requiere sesión) |
+| GET | `/admin/sesiones` | Ver las sesiones abiertas de la cuenta (link "Cuenta") |
+| POST | `/admin/sesiones/{id}/revocar` | Cerrar una sesión concreta (también `/admin/sesiones/revocar-otras`) |
 | GET | `/admin` | Panel principal (accesos a los 4 mantenimientos) |
 | GET/POST | `/admin/mantenimiento/bd` | Mantenimiento 1: conexión a Postgres |
 | GET | `/admin/mantenimiento/inventario` | Landing del Mantenimiento 2 |

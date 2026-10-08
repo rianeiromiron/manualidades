@@ -9,6 +9,7 @@ import (
 	"manualidades/internal/inventario"
 	"manualidades/internal/sitio"
 	"manualidades/internal/tienda"
+	"manualidades/internal/sesiones"
 	"manualidades/internal/usuarios"
 )
 
@@ -91,6 +92,10 @@ func (a *App) reconnect(cfg config.DBConfig) {
 		return
 	}
 	if err := usuarios.Migrate(conn); err != nil {
+		conn.Close()
+		return
+	}
+	if err := sesiones.Migrate(conn); err != nil {
 		conn.Close()
 		return
 	}

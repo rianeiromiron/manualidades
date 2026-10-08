@@ -13,6 +13,7 @@ import (
 	"manualidades/internal/sitio"
 	"manualidades/internal/storage"
 	"manualidades/internal/tienda"
+	"manualidades/internal/sesiones"
 	"manualidades/internal/usuarios"
 	"manualidades/internal/web"
 )
@@ -46,6 +47,9 @@ func main() {
 			if err := usuarios.Migrate(conn); err != nil {
 				log.Printf("advertencia: no se pudo migrar el esquema de usuarios: %v", err)
 			}
+			if err := sesiones.Migrate(conn); err != nil {
+				log.Printf("advertencia: no se pudo migrar el esquema de sesiones: %v", err)
+			}
 			app.SetDB(conn)
 			log.Printf("conectado a la base de datos %q en %s:%d", cfg.DBName, cfg.Host, cfg.Port)
 		} else {
@@ -72,6 +76,9 @@ func main() {
 	// una simple petición GET.
 	admin.HandleFunc("/logout", app.AdminLogout).Methods(http.MethodPost)
 	admin.HandleFunc("/cambiar-password", app.AdminCambiarPassword).Methods(http.MethodGet, http.MethodPost)
+	admin.HandleFunc("/sesiones", app.AdminSesiones).Methods(http.MethodGet)
+	admin.HandleFunc("/sesiones/revocar-otras", app.AdminSesionesRevocarOtras).Methods(http.MethodPost)
+	admin.HandleFunc("/sesiones/{id}/revocar", app.AdminSesionRevocar).Methods(http.MethodPost)
 
 	// Home y cambio de contraseña son válidos para cualquier sesión, sin
 	// importar el módulo asignado; cada uno filtra lo que muestra según

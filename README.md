@@ -8,7 +8,9 @@ base de datos Postgres.
 No usa ningún framework de frontend: las páginas se renderizan del lado del
 servidor con `html/template`, y el JavaScript que existe es vanilla,
 escrito a mano, y deliberadamente mínimo (filtros, un carrito en
-`localStorage`, y un par de formularios con campos condicionales).
+`localStorage`, y un par de formularios con campos condicionales). Todo vive
+en archivos de `web/static/js/`: las plantillas no llevan `<script>` ni
+atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 
 ---
 
@@ -22,7 +24,7 @@ escrito a mano, y deliberadamente mínimo (filtros, un carrito en
 | Tienda — Fase 1 | Catálogo, carrito, checkout con pago **simulado** | ✅ Hecho |
 | Estado del pedido | Pagado → Procesando en bodega / Entregado / Cancelado, manejado desde admin | ✅ Hecho |
 | Reserva de stock | El checkout reserva el stock **antes** de cobrar (pedido `pendiente_pago`/`pagando`, con vencimiento) y solo descarga el kardex cuando el pago se aprueba | ✅ Hecho |
-| Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido | ✅ Hecho |
+| Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido, sesiones revocables, CSRF, límite de intentos, cabeceras y CSP estricta | ✅ Hecho |
 | Usuarios y permisos | Superusuarios y usuarios administrativos con módulos asignables | ✅ Hecho |
 | Pasarela de pago | Registro de pagos (tabla `pagos`) + pasarela simulada (`pasarela-simulada`) con 3 modos: aprobar/rechazar/fallar | ✅ Hecho (simulada) |
 | Tienda — Fase 2 | Preparación de pedidos en bodega (flujo de picking/empaque) | ⬜ Pendiente (estados ya modelados) |
@@ -45,6 +47,8 @@ Dependencias (`go.mod`):
 github.com/gorilla/mux v1.8.1
 github.com/lib/pq v1.10.9
 github.com/google/uuid v1.6.0   (nombres de archivo únicos al subir fotos)
+golang.org/x/crypto v0.31.0     (solo bcrypt, para las contraseñas)
+github.com/chromedp/chromedp    (solo pruebas e2e con un navegador real)
 ```
 
 ---
@@ -285,9 +289,9 @@ el límite explícito `maxUploadBytes`).
 
 ### Cabeceras de seguridad
 
-`(web.SecurityHeaders)` (`internal/web/cabeceras.go`), montada con `r.Use(...)`
-sobre el router raíz en `main.go` (aplica a admin, tienda y estáticos por
-igual), agrega en toda respuesta:
+`web.SecurityHeaders` (`internal/web/cabeceras.go`), montada con `r.Use(...)`
+sobre el router raíz en `internal/web/router.go` (aplica a admin, tienda y
+estáticos por igual), agrega en toda respuesta:
 
 - `X-Content-Type-Options: nosniff` — evita que el navegador "adivine" un
   tipo de contenido distinto al declarado (por ejemplo, una foto de producto
@@ -297,15 +301,21 @@ igual), agrega en toda respuesta:
 - `Referrer-Policy: strict-origin-when-cross-origin` — no manda la URL
   completa como referer a otros sitios al seguir un link externo.
 - `Content-Security-Policy` — limita de dónde puede cargar recursos la
-  página: solo el propio origen y Google Fonts (que ya usa `layout.html` /
-  `layout_tienda.html`), con `frame-ancestors 'none'` (lo mismo que
-  `X-Frame-Options`, pero lo reconocen también navegadores que ya soportan
-  CSP en vez de esa cabecera vieja) y `object-src 'none'`. **No** restringe
-  `'unsafe-inline'` en `script-src`/`style-src`: las plantillas usan JS y
-  estilos inline extensamente, y quitarlo implicaría moverlos a archivos
-  aparte en cada una — un cambio mucho más grande que agregar esta cabecera.
-  Sigue bloqueando lo más común: que un XSS inyecte un `<script src>`, un
-  `<object>` o un `<iframe>` de un dominio ajeno.
+  página: solo el propio origen (y Google Fonts para estilos y fuentes, que ya
+  usan `layout.html` / `layout_tienda.html`). Además fija `connect-src 'self'`,
+  `img-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
+  `form-action 'self'` y `frame-ancestors 'none'` (lo mismo que
+  `X-Frame-Options`, pero lo reconocen también los navegadores que ya
+  soportan CSP en vez de esa cabecera vieja). **`script-src` no permite
+  `'unsafe-inline'`**: todo el JavaScript vive en `web/static/js/`, las
+  plantillas no llevan `<script>` ni `onclick`/`onsubmit`, y los datos que un
+  script necesita se pasan en atributos `data-*` (p. ej. `data-confirm` en los
+  formularios que piden confirmación). Así, aunque un XSS lograra inyectar
+  HTML, el navegador no ejecutaría el script. `TestPlantillasSinJavaScriptInline`
+  vigila que nadie vuelva a meter JS inline. `style-src` sí conserva
+  `'unsafe-inline'` (hay atributos `style` y el tema de la tienda se inyecta
+  como `<style>`); un CSS inyectado no ejecuta código, así que el riesgo es
+  bajo.
 - `Strict-Transport-Security` — solo cuando la conexión ya es HTTPS (ver
   `esConexionSegura` en el punto anterior): mandarla sobre HTTP no tiene
   efecto en los navegadores.
@@ -389,7 +399,8 @@ sin stock a un pedido que ya se estaba cobrando, cae en `por_conciliar`.
 Todo `/admin/*` requiere haber iniciado sesión, excepto `/admin/login`,
 `/admin/logout` y `/admin/setup`. El middleware que lo aplica es
 `(a *App) RequireAdminAuth` (`internal/web/handlers_auth.go`), montado sobre
-el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
+el subrouter `admin` en `internal/web/router.go` con
+`admin.Use(app.RequireAdminAuth)`.
 
 **Cómo funciona:**
 
@@ -403,12 +414,25 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
   `/admin/setup`, un formulario de una sola vez para crear el usuario y
   contraseña iniciales. Una vez existe, `/admin/setup` deja de estar
   disponible (redirige a `/admin/login`).
-- Al iniciar sesión correctamente, se firma una cookie
-  (`admin_session`, `HttpOnly`, `SameSite=Lax`) con HMAC-SHA256 usando la
-  llave guardada en `admin.json` — no hay tabla de sesiones ni estado en
-  memoria del servidor: la cookie misma es la prueba de la sesión, y
-  cualquier reinicio del proceso la sigue aceptando mientras no haya
-  expirado (12 horas) ni cambiado la llave.
+- Las contraseñas deben tener entre 8 y 72 bytes (`errorLargoPassword`):
+  bcrypt solo usa los primeros 72, y aceptar más sería aceptar en silencio una
+  contraseña que no se verifica completa.
+- Al iniciar sesión correctamente se registra la sesión en la tabla `sesiones`
+  (`internal/sesiones`: id aleatorio, dueño, vencimiento, IP y navegador) y se
+  firma una cookie (`admin_session`, `HttpOnly`, `SameSite=Lax`,
+  `Path=/admin`) con HMAC-SHA256 usando la llave de esa identidad. El payload
+  firmado es `tipo|identidad|vencimiento|id_de_sesión`, así que nadie puede
+  cambiar el id para reutilizar otra sesión. Para aceptar una petición no
+  basta la firma: la sesión debe constar en la tabla y no estar revocada ni
+  vencida (12 horas). Si la consulta falla, se trata como inválida. La
+  excepción es el `admin` raíz sin base de datos configurada, que debe poder
+  entrar para configurarla: ahí solo vale la firma.
+- **Sesiones revocables.** `/admin/sesiones` (link "Cuenta") lista las sesiones
+  abiertas de la identidad actual, con IP y navegador, y permite cerrar una
+  concreta o todas las demás. Cerrar sesión (`/admin/logout`, solo `POST`)
+  también la revoca en el servidor, así que una copia robada de la cookie deja
+  de servir al instante. Revocar filtra por tipo + identidad: nadie puede cerrar
+  sesiones ajenas.
 - `internal/config/admin.go` tiene toda la lógica de credenciales
   (`CreateAdmin`, `VerifyPassword`, `UpdatePassword`, con `bcrypt`);
   `handlers_auth.go` tiene la lógica de la cookie de sesión (firma/
@@ -418,8 +442,8 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
   menú, ya logueado): pide la contraseña actual, y al guardar rota también
   la llave de firma de sesión — eso invalida la sesión actual (y cualquier
   otra) a propósito, forzando a iniciar sesión de nuevo con la contraseña
-  nueva. No hay flujo de "olvidé mi contraseña"; si se pierde, hay que
-  borrar `admin.json` a mano y volver a pasar por `/admin/setup`.
+  nueva. No hay flujo de "olvidé mi contraseña"; ver
+  [RECUPERAR-CONTRASENA.md](RECUPERAR-CONTRASENA.md).
 - **Límite de intentos.** `/admin/login` bloquea una IP 15 minutos tras 5
   intentos fallidos en 10 minutos (`internal/web/limitador.go`, ver
   "Limitaciones conocidas" para el alcance de este límite). Se cuenta por IP
@@ -428,8 +452,8 @@ el subrouter `admin` en `main.go` con `admin.Use(app.RequireAdminAuth)`.
 - **CSRF.** Cada POST de `/admin/*` con sesión (login/logout/setup quedan
   fuera: todavía no hay sesión que firme un token) exige un campo oculto
   `csrf` que coincida con el que `injectNav` puso en la página al
-  renderizarla (`(a *App) RequireCSRF`, montado con `admin.Use` en `main.go`
-  justo después de `RequireAdminAuth`, porque necesita la sesión que ese
+  renderizarla (`(a *App) RequireCSRF`, montado con `admin.Use` en
+  `internal/web/router.go` justo después de `RequireAdminAuth`, porque necesita la sesión que ese
   middleware deja en el contexto). El valor es un HMAC-SHA256 de la
   `SecretKey` de esa sesión (`csrfToken`, misma llave que firma la cookie):
   nadie sin una sesión válida de esa identidad lo puede reproducir, y rotar
@@ -474,7 +498,7 @@ usuarios adicionales guardados en Postgres (tablas `usuarios`, `modulos`,
 El mantenimiento de usuarios (`/admin/usuarios`) es exclusivo del usuario
 `admin` — ni siquiera un superusuario puede entrar ahí
 (`(a *App) RequireOnlyAdmin`, `handlers_auth.go`). Cada módulo del panel
-vive en su propio subrouter en `main.go` protegido con
+vive en su propio subrouter en `internal/web/router.go` protegido con
 `app.RequireModule("clave")`, que revisa el rol/módulos de la sesión activa
 (guardada en el contexto de la request por `RequireAdminAuth`) y responde
 403 si no corresponde. El nav (`layout.html`) y el Panel (`home.html`) usan
@@ -500,16 +524,23 @@ usuarios adicionales desde `/admin/usuarios`.
 ## Estructura de carpetas
 
 ```
-cmd/server/main.go          punto de entrada: wiring de storage, DB, rutas
+cmd/server/main.go          punto de entrada: wiring de storage, DB, http.Server con timeouts
 
 internal/
-  config/                   config.json (host/puerto/usuario/contraseña de Postgres)
+  config/                   config.json (Postgres) y admin.json (credenciales del admin raíz)
   db/                        Open/Test/EnsureDatabase
   inventario/                categorías, productos, fotos, movimientos (kardex)
   sitio/                     configuración del negocio (Mantenimiento 3)
   tienda/                    pedidos, pagos y checkout con reserva de stock (checkout.go)
+  pasarela/                  cliente HTTP de la pasarela de pago
+  reportes/                  consultas de los reportes del admin
+  usuarios/                  usuarios, roles y módulos asignables
+  sesiones/                  registro de sesiones (crear, validar, revocar)
   storage/                   interfaz Storage + implementación Local
-  web/                       App struct + un archivo de handlers por área
+  web/                       App struct, router.go (rutas y middlewares), un archivo de handlers por área,
+                             cabeceras.go (CSP), limitador.go (intentos por IP)
+  testdb/                    base de datos temporal para las pruebas
+  e2e/                       pruebas de seguridad de punta a punta
 
 web/
   templates/
@@ -519,7 +550,8 @@ web/
   static/
     css/style.css            estilos del admin
     css/tienda.css            estilos de la tienda pública (con color-mix())
-    js/carrito.js             carrito en localStorage (compartido por 4 páginas)
+    js/                       todo el JavaScript (carrito.js, tienda-*.js, admin-*.js);
+                              las plantillas no llevan JS inline
 
 media/
   productos/                 fotos de producto (gitignored)
@@ -596,9 +628,15 @@ dirección, teléfono, email, Facebook, Instagram, WhatsApp, ruta del logo, y
 
 | Tabla | Columnas clave | Notas |
 |---|---|---|
-| `modulos` | `clave` (único: `bd`/`inventario`/`sitio`/`pedidos`), `nombre`, `orden` | Catálogo fijo, sembrado por la migración; no se edita desde la UI |
+| `modulos` | `clave` (único: `bd`/`inventario`/`sitio`/`pedidos`/`reportes`), `nombre`, `orden` | Catálogo fijo, sembrado por la migración; no se edita desde la UI |
 | `usuarios` | `usuario` (único), `password_hash`, `secret_key`, `rol` (`superusuario`/`administrativo`), `activo` | `secret_key` es propia de cada fila — cambiar su contraseña solo cierra su propia sesión |
 | `usuario_modulos` | `usuario_id`, `modulo_id` | Solo se usa para `rol='administrativo'`; un `superusuario` no necesita filas aquí |
+
+### Sesiones (`internal/sesiones/sesiones.go`)
+
+| Tabla | Columnas clave | Notas |
+|---|---|---|
+| `sesiones` | `id` (aleatorio), `kind` (`admin`/`user`), `ident`, `creada_en`, `expira_en`, `ip`, `user_agent`, `revocada` | Una fila por sesión abierta. El `id` va dentro de la cookie firmada; revocar es marcar `revocada`. Índice por (`kind`, `ident`) |
 
 ---
 
@@ -612,7 +650,7 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 |---|---|---|
 | GET/POST | `/admin/setup` | Crear el usuario admin (solo si todavía no existe uno) |
 | GET/POST | `/admin/login` | Iniciar sesión |
-| GET/POST | `/admin/logout` | Cerrar sesión |
+| POST | `/admin/logout` | Cerrar sesión (solo `POST`; también la revoca en el servidor) |
 | GET/POST | `/admin/cambiar-password` | Cambiar la contraseña (requiere sesión) |
 | GET | `/admin/sesiones` | Ver las sesiones abiertas de la cuenta (link "Cuenta") |
 | POST | `/admin/sesiones/{id}/revocar` | Cerrar una sesión concreta (también `/admin/sesiones/revocar-otras`) |
@@ -834,7 +872,8 @@ go test ./...
   el mantenimiento de usuarios en sí solo lo puede abrir el `admin` original
   de `admin.json` — no hay forma de delegar esa delegación.
 - **Sin "olvidé mi contraseña".** Para `admin`, si se pierde hay que borrar
-  `admin.json` a mano en el servidor y volver a pasar por `/admin/setup`.
+  `admin.json` a mano en el servidor y volver a pasar por `/admin/setup`
+  (detalle y riesgos en [RECUPERAR-CONTRASENA.md](RECUPERAR-CONTRASENA.md)).
   Para un usuario de la tabla `usuarios`, el `admin` puede resetearle la
   contraseña desde `/admin/usuarios/{id}/editar`, pero no hay flujo de
   autoservicio ("te mandamos un correo").
@@ -846,6 +885,21 @@ go test ./...
   lo limpia. Razonable para un panel/tienda de bajo tráfico; una plataforma
   con varias instancias del servidor necesitaría un límite compartido (Redis
   u otro almacén central), porque cada instancia llevaría su propio contador.
+- **El límite de intentos no funciona detrás de un proxy.** `clientIP` usa solo
+  `RemoteAddr`, a propósito: no confía en `X-Forwarded-For` sin un proxy de
+  confianza. Detrás de Cloudflare o Caddy todos los visitantes parecerían una
+  sola IP y 5 logins fallidos bloquearían a todos. **Hay que configurar la IP
+  de confianza antes de publicar** (ver [PLAN-HOSTING.md](PLAN-HOSTING.md)).
+- **Datos de tarjeta en claro por el servidor.** Van del navegador a
+  `/checkout/confirmar` y de ahí a la pasarela. No se guardan ni se loguean
+  (solo marca y últimos 4 dígitos), pero pasan por la memoria del servidor. La
+  solución real es tokenizar con el proveedor, y depende de la pasarela real
+  (Fase 3).
+- **Fotos sin validar el tipo real del archivo.** `Save` conserva la extensión
+  del nombre; `nosniff` mitiga el riesgo, y hoy solo el dueño sube fotos.
+- **Errores internos mostrados al usuario.** Varios handlers muestran
+  `err.Error()`, que puede incluir texto de PostgreSQL.
+- **`style-src` conserva `'unsafe-inline'`** (ver "Cabeceras de seguridad").
 - **Datos anteriores a una migración no se pueden completar retroactivamente
   con precisión.** Ejemplos concretos ya ocurridos en este proyecto:
   - Movimientos registrados antes de separar `fecha` de `creado_en` quedaron

@@ -1,8 +1,10 @@
 package web
 
 import (
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -88,13 +90,101 @@ func (l *limitador) limpiarVencidos(now time.Time) {
 	}
 }
 
-// clientIP extrae la IP del cliente de RemoteAddr (host:puerto). No confía en
-// cabeceras como X-Forwarded-For: sin un proxy de confianza configurado
-// delante, esa cabecera la puede mandar cualquiera y anularía el límite.
+// proxiesConfiables son los proxies cuyas cabeceras de IP se aceptan, leídos
+// de la variable de entorno TRUSTED_PROXIES (lista separada por comas de IPs
+// o CIDR, por ejemplo "127.0.0.1,::1"). Vacía por defecto: sin proxy
+// configurado clientIP solo mira RemoteAddr, que es lo correcto en desarrollo
+// y cuando el servidor está expuesto directamente.
+var proxiesConfiables = cargarProxiesConfiables(os.Getenv("TRUSTED_PROXIES"))
+
+// cargarProxiesConfiables convierte la lista de TRUSTED_PROXIES en redes.
+// Las entradas inválidas se avisan por log y se ignoran: es más seguro
+// confiar en menos proxies de los previstos que en uno mal escrito.
+func cargarProxiesConfiables(lista string) []*net.IPNet {
+	var redes []*net.IPNet
+	for _, entrada := range strings.Split(lista, ",") {
+		entrada = strings.TrimSpace(entrada)
+		if entrada == "" {
+			continue
+		}
+		if !strings.Contains(entrada, "/") {
+			ip := net.ParseIP(entrada)
+			if ip == nil {
+				log.Printf("advertencia: TRUSTED_PROXIES ignora %q: no es una IP ni un CIDR", entrada)
+				continue
+			}
+			bits := 128
+			if ip.To4() != nil {
+				bits = 32
+			}
+			redes = append(redes, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		_, red, err := net.ParseCIDR(entrada)
+		if err != nil {
+			log.Printf("advertencia: TRUSTED_PROXIES ignora %q: %v", entrada, err)
+			continue
+		}
+		redes = append(redes, red)
+	}
+	return redes
+}
+
+func esProxyConfiable(ip net.IP, proxies []*net.IPNet) bool {
+	for _, red := range proxies {
+		if red.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIP devuelve la IP del cliente para limitar intentos y registrar
+// sesiones.
+//
+// Parte siempre de RemoteAddr (host:puerto). Solo si esa conexión viene de un
+// proxy configurado en TRUSTED_PROXIES se miran las cabeceras que el proxy
+// añade: CF-Connecting-IP (Cloudflare) y, si no está, X-Forwarded-For. Si la
+// conexión no viene de un proxy de confianza las cabeceras se ignoran, porque
+// cualquiera puede mandarlas y anularía el límite.
+//
+// El valor de una cabecera solo se acepta si es una IP válida, para que no
+// entre texto arbitrario como clave del limitador ni en la tabla de sesiones.
 func clientIP(r *http.Request) string {
+	return clientIPDetrasDe(r, proxiesConfiables)
+}
+
+func clientIPDetrasDe(r *http.Request, proxies []*net.IPNet) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(host)
+	if peer == nil || !esProxyConfiable(peer, proxies) {
+		return host
+	}
+
+	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); ip != nil {
+		return ip.String()
+	}
+
+	// X-Forwarded-For lista "cliente, proxy1, proxy2". Cada proxy añade al
+	// final lo que vio, así que lo único fiable es lo que añadieron nuestros
+	// proxies: se recorre de derecha a izquierda saltando los de confianza, y
+	// la primera IP que no lo sea es el cliente. Lo que haya más a la
+	// izquierda lo pudo escribir el propio cliente.
+	var saltos []string
+	for _, valor := range r.Header.Values("X-Forwarded-For") {
+		saltos = append(saltos, strings.Split(valor, ",")...)
+	}
+	for i := len(saltos) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(saltos[i]))
+		if ip == nil {
+			break
+		}
+		if !esProxyConfiable(ip, proxies) {
+			return ip.String()
+		}
 	}
 	return host
 }

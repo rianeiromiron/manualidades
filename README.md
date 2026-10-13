@@ -885,11 +885,16 @@ go test ./...
   lo limpia. Razonable para un panel/tienda de bajo tráfico; una plataforma
   con varias instancias del servidor necesitaría un límite compartido (Redis
   u otro almacén central), porque cada instancia llevaría su propio contador.
-- **El límite de intentos no funciona detrás de un proxy.** `clientIP` usa solo
-  `RemoteAddr`, a propósito: no confía en `X-Forwarded-For` sin un proxy de
-  confianza. Detrás de Cloudflare o Caddy todos los visitantes parecerían una
-  sola IP y 5 logins fallidos bloquearían a todos. **Hay que configurar la IP
-  de confianza antes de publicar** (ver [PLAN-HOSTING.md](PLAN-HOSTING.md)).
+- **Detrás de un proxy hay que configurar `TRUSTED_PROXIES`.** `clientIP`
+  parte de `RemoteAddr` y solo lee `CF-Connecting-IP` o `X-Forwarded-For` si
+  la conexión viene de una IP o CIDR listada en la variable de entorno
+  `TRUSTED_PROXIES` (por ejemplo `127.0.0.1,::1` con Caddy en la misma
+  máquina). Sin ella se ignoran esas cabeceras, que es lo correcto en
+  desarrollo, pero detrás de Cloudflare o Caddy todos los visitantes
+  parecerían una sola IP y 5 logins fallidos bloquearían a todos. Esto solo es
+  seguro si el puerto de la app no es accesible desde fuera (escuchar en
+  localhost o cerrarlo en el firewall) y, si Caddy confía en
+  `CF-Connecting-IP`, si solo Cloudflare puede llegar a Caddy.
 - **Datos de tarjeta en claro por el servidor.** Van del navegador a
   `/checkout/confirmar` y de ahí a la pasarela. No se guardan ni se loguean
   (solo marca y últimos 4 dígitos), pero pasan por la memoria del servidor. La

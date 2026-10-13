@@ -27,6 +27,7 @@ atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 | Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido, sesiones revocables, CSRF, límite de intentos, cabeceras y CSP estricta | ✅ Hecho |
 | Usuarios y permisos | Superusuarios y usuarios administrativos con módulos asignables | ✅ Hecho |
 | Pasarela de pago | Registro de pagos (tabla `pagos`) + pasarela simulada (`pasarela-simulada`) con 3 modos: aprobar/rechazar/fallar | ✅ Hecho (simulada) |
+| Despliegue | Servidor propio gratuito (Oracle Cloud) detrás de Cloudflare, respaldos cifrados diarios y script de despliegue con reversión automática; tienda de prueba en `prueba.manualidadescristal.com` (ver [Producción](#producción)) | ✅ Hecho (falta copia de respaldo fuera del servidor) |
 | Tienda — Fase 2 | Preparación de pedidos en bodega (flujo de picking/empaque) | ⬜ Pendiente (estados ya modelados) |
 | Tienda — Fase 3 | Pasarela de pago real | ⬜ Pendiente (el punto de reemplazo ya está aislado en `internal/pasarela`) |
 | Validación de NIT contra SAT | — | ⬜ Pendiente |
@@ -36,7 +37,7 @@ atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 ## Stack tecnológico
 
 - **Go 1.24** — `net/http` + [gorilla/mux](https://github.com/gorilla/mux) para rutas
-- **Postgres** (probado contra un contenedor Docker local) vía [lib/pq](https://github.com/lib/pq)
+- **Postgres** vía [lib/pq](https://github.com/lib/pq): un contenedor Docker en desarrollo y Postgres 16 instalado en el servidor en producción
 - **html/template** de la librería estándar — sin React/Vue/htmx
 - **JavaScript vanilla** — sin build step, sin npm, sin bundlers
 - **CSS puro** — variables CSS (`:root`) y `color-mix()` para temas derivados; sin Tailwind ni preprocesadores
@@ -569,6 +570,47 @@ config.json.example          plantilla de referencia
 
 ---
 
+## Producción
+
+La app corre en una máquina virtual gratuita (Always Free) de Oracle Cloud,
+región México Central (Querétaro), con Ubuntu 24.04 sobre ARM (A1.Flex). Todo
+el sistema vive en una sola máquina: no hay microservicios.
+
+```
+visitante ──HTTPS──> Cloudflare ──HTTPS──> Caddy ──> app Go (:8090) ──> Postgres 16
+                     (DNS, CDN, WAF)       (:443)    systemd           (solo 127.0.0.1)
+```
+
+- **Cloudflare** lleva el DNS y es el único que puede llegar al puerto 443:
+  Caddy responde 403 a cualquier conexión que no venga de los rangos de
+  Cloudflare, y el modo de cifrado es *Full (strict)* con un certificado de
+  origen de Cloudflare. La IP real del visitante llega en `CF-Connecting-IP`;
+  la app solo la acepta porque `TRUSTED_PROXIES=127.0.0.1,::1` (ver
+  "Limitaciones conocidas").
+- **La app** está en `/opt/manualidades` (ejecutable, `web/`, `media/`,
+  `config.json`, `admin.json`) y corre como un usuario sin privilegios mediante
+  el servicio de systemd `manualidades`.
+- **Direcciones:** `prueba.manualidadescristal.com` apunta a la tienda;
+  `manualidadescristal.com` sigue mostrando una página temporal de "En
+  construcción" servida por un Worker de Cloudflare.
+- **Fotos:** en el disco de la máquina (`media/`), sin servicio externo.
+- **Acceso al servidor:** solo por SSH con llave. Postgres no es accesible desde
+  internet; para consultarlo se usa un túnel SSH.
+
+Cómo llevar un cambio al servidor y cómo se respalda y restaura:
+
+| Tema | Dónde |
+|---|---|
+| Desplegar (`deploy/desplegar.ps1`, skill `/desplegar` de Claude Code) | [deploy/DESPLIEGUE.md](deploy/DESPLIEGUE.md) |
+| Respaldos diarios cifrados (restic) y restauración | [deploy/RESPALDOS.md](deploy/RESPALDOS.md) |
+
+**Pendiente antes de abrir la tienda al público:** una copia de los respaldos
+fuera del servidor, una pasarela de pago real (los datos de tarjeta hoy pasan
+sin tokenizar por el servidor) y reemplazar los mensajes de error internos que
+llegan al usuario.
+
+---
+
 ## Modelo de datos
 
 Todas las tablas se crean automáticamente al conectar (`CREATE TABLE IF NOT
@@ -935,10 +977,15 @@ go test ./...
   flujo de picking/empaque/envío.
 - **Sin validación de NIT contra la SAT.** El campo existe y se guarda, pero
   no se verifica contra ningún servicio externo.
-- **Fotos y logo en disco local.** Correcto para desarrollo o un hosting con
-  disco persistente; en una plataforma de contenedores efímeros (Railway,
-  Render, Fly.io sin volumen) se perderían en cada redeploy — ahí hace falta
-  el backend S3-compatible mencionado arriba antes de salir a producción.
+- **Fotos y logo en disco local.** Decisión consciente para una sola máquina:
+  en producción viven en `/opt/manualidades/media` y por eso `media/` entra en
+  los respaldos. En una plataforma de contenedores efímeros (Railway, Render,
+  Fly.io sin volumen) se perderían en cada redeploy; si algún día se cambia a
+  una así, hace falta el backend S3-compatible mencionado arriba.
+- **Miniaturas.** La tienda y la administración muestran la foto completa
+  (reducida a 1200 px al subirla) incluso en miniaturas de 44 px. Es aceptable
+  hoy, pero generar miniaturas de verdad reduciría mucho el peso de las
+  páginas con muchos productos.
 
 ---
 
@@ -956,5 +1003,7 @@ go test ./...
   Guatemala/Centroamérica.
 - **Validación de NIT con SAT**: una llamada de validación en el checkout
   antes de confirmar el pedido; el campo `cliente_nit` ya existe.
-- **Backend de almacenamiento S3-compatible**: cuando se elija el hosting de
-  producción, si no tiene disco persistente.
+- **Backend de almacenamiento S3-compatible**: solo si algún día se abandona la
+  máquina única (hoy las fotos viven en su disco, con respaldo).
+- **Copia de respaldo fuera del servidor**: elegir un destino (Cloudflare R2,
+  Backblaze B2 u otro) y añadirlo al script de `deploy/respaldo.sh`.

@@ -526,6 +526,11 @@ usuarios adicionales desde `/admin/usuarios`.
 
 ```
 cmd/server/main.go          punto de entrada: wiring de storage, DB, http.Server con timeouts
+cmd/optimizar-fotos/        reduce las fotos ya guardadas (misma regla que al subir); no toca los originales
+
+deploy/                     despliegue y respaldos del servidor: DESPLIEGUE.md (desplegar.ps1,
+                            instalar-remoto.sh) y RESPALDOS.md (restic diario)
+.claude/skills/desplegar/   skill de Claude Code (/desplegar) que guía el despliegue
 
 internal/
   config/                   config.json (Postgres) y admin.json (credenciales del admin raíz)

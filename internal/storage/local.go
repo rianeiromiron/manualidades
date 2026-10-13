@@ -10,9 +10,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Local guarda los archivos en disco. Pensado para desarrollo; en
-// producción se reemplaza por una implementación S3-compatible que
-// satisface la misma interfaz Storage.
+// Local guarda los archivos en disco: en desarrollo y también en producción
+// mientras la app corra en una sola máquina. Si algún día las fotos se mueven
+// a un almacén S3-compatible (Cloudflare R2), basta otra implementación de la
+// interfaz Storage que reutilice NormalizarImagen.
 type Local struct {
 	// Dir es la carpeta física donde se escriben los archivos.
 	Dir string
@@ -27,17 +28,17 @@ func NewLocal(dir, urlPrefix string) (*Local, error) {
 	return &Local{Dir: dir, URLPrefix: strings.TrimSuffix(urlPrefix, "/")}, nil
 }
 
+// Save valida y reprocesa la imagen (ver NormalizarImagen) y la guarda con un
+// nombre aleatorio. La extensión sale del contenido real, no de filename, que
+// se ignora: así un archivo subido como "x.html" nunca queda con esa extensión.
 func (l *Local) Save(filename string, data io.Reader) (string, error) {
-	ext := filepath.Ext(filename)
+	datos, ext, err := NormalizarImagen(data)
+	if err != nil {
+		return "", err
+	}
 	unique := uuid.NewString() + ext
 
-	dst, err := os.Create(filepath.Join(l.Dir, unique))
-	if err != nil {
-		return "", fmt.Errorf("creando archivo: %w", err)
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, data); err != nil {
+	if err := os.WriteFile(filepath.Join(l.Dir, unique), datos, 0o644); err != nil {
 		return "", fmt.Errorf("guardando archivo: %w", err)
 	}
 	return unique, nil

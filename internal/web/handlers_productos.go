@@ -111,7 +111,7 @@ func (a *App) ProductoEditar(w http.ResponseWriter, r *http.Request) {
 
 	msg := ""
 	if r.URL.Query().Get("fotoError") != "" {
-		msg = "El producto se guardó, pero una o más fotos no se pudieron subir."
+		msg = "El producto se guardó, pero una o más fotos no se pudieron subir. Usa imágenes JPG, PNG o WebP de hasta 10 MB."
 	}
 	a.renderProductoForm(w, r, conn, p, fotos, msg)
 }

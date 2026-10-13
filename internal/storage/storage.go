@@ -7,8 +7,10 @@ import "io"
 // Local para desarrollo, S3-compatible (Cloudflare R2, etc.) en producción,
 // sin que el resto de la app tenga que cambiar.
 type Storage interface {
-	// Save guarda el contenido bajo un nombre único derivado de filename
-	// y devuelve la ruta relativa para persistir en la base de datos.
+	// Save valida que el contenido sea una imagen JPEG, PNG o WebP, la
+	// reprocesa (ver NormalizarImagen) y la guarda bajo un nombre único.
+	// Devuelve la ruta relativa para persistir en la base de datos.
+	// filename solo es informativo: la extensión sale del contenido.
 	Save(filename string, data io.Reader) (path string, err error)
 
 	// URL construye el link público a partir de la ruta guardada.

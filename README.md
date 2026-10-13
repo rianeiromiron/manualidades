@@ -47,6 +47,7 @@ Dependencias (`go.mod`):
 github.com/gorilla/mux v1.8.1
 github.com/lib/pq v1.10.9
 github.com/google/uuid v1.6.0   (nombres de archivo únicos al subir fotos)
+golang.org/x/image v0.30.0      (decodificar WebP y reducir fotos al subirlas)
 golang.org/x/crypto v0.31.0     (solo bcrypt, para las contraseñas)
 github.com/chromedp/chromedp    (solo pruebas e2e con un navegador real)
 ```
@@ -900,8 +901,15 @@ go test ./...
   (solo marca y últimos 4 dígitos), pero pasan por la memoria del servidor. La
   solución real es tokenizar con el proveedor, y depende de la pasarela real
   (Fase 3).
-- **Fotos sin validar el tipo real del archivo.** `Save` conserva la extensión
-  del nombre; `nosniff` mitiga el riesgo, y hoy solo el dueño sube fotos.
+- **Las fotos se reprocesan al subirlas.** `Save` (`internal/storage/imagen.go`)
+  decide el tipo por el contenido, no por el nombre: solo acepta JPEG, PNG y
+  WebP de hasta 10 MB (sin SVG ni GIF), rechaza imágenes que declaran más de
+  50 millones de píxeles, reduce el lado más largo a 1200 px sin ampliar,
+  respeta la orientación EXIF y descarta los metadatos (incluida la ubicación
+  GPS). Un PNG sigue siendo PNG; JPEG y WebP se guardan como JPEG (la
+  transparencia de un WebP se aplana sobre blanco). La extensión del archivo
+  guardado sale del contenido. Las fotos subidas antes de este cambio no se
+  reprocesan.
 - **Errores internos mostrados al usuario.** Varios handlers muestran
   `err.Error()`, que puede incluir texto de PostgreSQL.
 - **`style-src` conserva `'unsafe-inline'`** (ver "Cabeceras de seguridad").

@@ -48,15 +48,15 @@
         <td>
           {{if gt (len .Fotos) 1}}
           <div class="thumb-hover-wrap">
-            <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="">
+            <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="" loading="lazy" decoding="async">
             <div class="thumb-gallery-popover">
               {{range .Fotos}}
-              <img src="/media/productos/{{.}}" alt="">
+              <img src="/media/productos/{{.}}" alt="" loading="lazy" decoding="async">
               {{end}}
             </div>
           </div>
           {{else if .FotoPortada}}
-          <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="">
+          <img class="thumb" src="/media/productos/{{.FotoPortada}}" alt="" loading="lazy" decoding="async">
           {{else}}
           <span class="thumb thumb-empty">🧵</span>
           {{end}}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Respaldo diario de manualidades
+
+[Timer]
+# 08:00 UTC = 02:00 en Guatemala (UTC-6), con poco tráfico.
+OnCalendar=*-*-* 08:00:00 UTC
+# Si el servidor estaba apagado a esa hora, lo hace al arrancar.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Respaldo cifrado de manualidades
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/manualidades-respaldo
+# restic necesita un sitio donde guardar su caché; en un servicio de systemd
+# no hay $HOME, así que se le da uno explícito.
+CacheDirectory=manualidades-restic
+Environment=RESTIC_CACHE_DIR=/var/cache/manualidades-restic
+Nice=10
+IOSchedulingClass=idle

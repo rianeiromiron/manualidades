@@ -38,4 +38,12 @@ if [ "$(date +%u)" = 7 ]; then
   restic check
 fi
 
+# 5. Copia fuera del servidor, si está configurada. Un fallo aquí no deshace el
+#    respaldo local (ya está hecho), pero deja el servicio en "fallido" para que
+#    se note en `systemctl status` y en el registro.
+if ! /usr/local/sbin/manualidades-copia-externa; then
+  echo "ERROR: falló la copia externa. El respaldo local sí se hizo."
+  exit 1
+fi
+
 echo "respaldo terminado"

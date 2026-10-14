@@ -21,14 +21,74 @@ Historial: 7 copias diarias, 4 semanales y 6 mensuales.
 | Volcado de la base (el último) | `/var/backups/manualidades/manualidades.dump` |
 | Script | `/usr/local/sbin/manualidades-respaldo` |
 | Temporizador | `manualidades-respaldo.timer` |
+| Copia externa | `/usr/local/sbin/manualidades-copia-externa`; claves en `/etc/manualidades-respaldo-offsite.env` |
 
 **La contraseña del repositorio debe estar también en el gestor de
 contraseñas.** Sin ella la copia no se puede abrir, ni siquiera por quien la
 hizo.
 
 > El repositorio local solo protege de borrados accidentales y de datos
-> dañados. Si se pierde el servidor se pierde también esta copia: hace falta
-> además una copia fuera del servidor (fase 2, pendiente de elegir destino).
+> dañados. Si se pierde el servidor se pierde también esta copia: por eso cada
+> respaldo se copia además a Backblaze B2 (sección siguiente).
+
+## Copia fuera del servidor (Backblaze B2)
+
+Al final de cada respaldo, `manualidades-copia-externa` envía a un bucket de
+Backblaze B2 las copias que aún no tiene (`restic copy`) y aplica la misma
+retención. Lo que viaja ya está cifrado con la contraseña de restic: Backblaze
+no puede leerlo. El servidor, el dominio y las copias quedan en tres empresas
+distintas (Oracle, Cloudflare, Backblaze).
+
+Si la copia externa falla, el servicio `manualidades-respaldo` queda en
+**fallido** (el respaldo local sí se hizo). Se ve con
+`systemctl status manualidades-respaldo` y en el registro.
+
+### Configurarla (una sola vez)
+
+1. En Backblaze: crear un bucket **privado** (sin Object Lock) y una clave de
+   aplicación limitada a ese bucket, con lectura y escritura. La
+   `applicationKey` se muestra una sola vez.
+2. Instalar los scripts en el servidor (desde la carpeta `deploy/` del proyecto,
+   subidos con `scp`):
+
+   ```bash
+   sudo install -m 755 respaldo.sh /usr/local/sbin/manualidades-respaldo
+   sudo install -m 755 copia-externa.sh /usr/local/sbin/manualidades-copia-externa
+   sudo install -m 755 configurar-offsite.sh /usr/local/sbin/manualidades-configurar-offsite
+   ```
+
+3. Ejecutar el asistente. Pide el bucket, el `keyID` y la `applicationKey` (esta
+   última sin mostrarse), crea el repositorio cifrado y hace la primera copia:
+
+   ```bash
+   sudo /usr/local/sbin/manualidades-configurar-offsite
+   ```
+
+   Guarda las claves en `/etc/manualidades-respaldo-offsite.env` (solo root,
+   permisos 600). Nunca las pegues en un chat ni las dejes en el historial.
+
+### Restaurar desde Backblaze (servidor perdido)
+
+En un servidor nuevo, con restic instalado y la contraseña de restic del gestor
+de contraseñas:
+
+```bash
+echo 'LA-CONTRASEÑA-DE-RESTIC' | sudo tee /root/.restic-pass > /dev/null && sudo chmod 600 /root/.restic-pass
+export RESTIC_REPOSITORY=b2:NOMBRE-DEL-BUCKET:restic
+export B2_ACCOUNT_ID=EL-KEYID
+export B2_ACCOUNT_KEY=LA-APPLICATIONKEY
+export RESTIC_PASSWORD_FILE=/root/.restic-pass
+sudo -E restic snapshots
+sudo -E restic restore latest --target /var/tmp/restaurar
+```
+
+y seguir con los pasos 3 a 5 de "Restaurar de verdad" más abajo (base de datos,
+fotos y archivos de configuración). Si ya no tienes el `keyID` y la
+`applicationKey`, crea una clave nueva en Backblaze: no hace falta la anterior.
+
+Los scripts se probaron en un Ubuntu desechable (copia, repetición sin
+duplicar, restauración desde el destino con la misma contraseña, contraseña
+incorrecta, destino que falla y datos inválidos en el asistente).
 
 ## Comandos útiles
 

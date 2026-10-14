@@ -55,6 +55,7 @@ code {
 /* ---- Header ---- */
 .topbar {
   --topbar-pad: max(clamp(20px, 5vw, 64px), calc((100% - 1180px) / 2 + clamp(20px, 5vw, 64px)));
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -113,6 +114,17 @@ code {
 }
 .topbar .brand-text { font-size: 1.25rem; }
 .topbar .brand-text em { color: var(--gold); }
+
+/* El interruptor del menú móvil: oculto a la vista pero accesible con teclado. */
+.nav-toggle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.nav-burger { display: none; }
 
 .topnav, .topnav-right { display: flex; align-items: stretch; }
 .topnav-right { margin-left: auto; }
@@ -837,20 +849,54 @@ code {
   .form-grid { grid-template-columns: 1fr; }
 }
 
-/* Pantallas angostas: la marca y las acciones quedan arriba y las opciones
-   pasan a una segunda fila con scroll horizontal, sin partir el texto. */
-@media (max-width: 1000px) {
-  .topbar { flex-wrap: wrap; gap: 0 8px; }
+/* La barra necesita unos 1500 px con todos los módulos. Como se centra en un
+   ancho de 1180 px para alinearse con el contenido, en pantallas de hasta
+   ~1930 px se salía por la derecha (y "Cerrar sesión" quedaba fuera). Con los
+   enlaces más compactos cabe hasta en esos tamaños; en portátiles además se
+   reduce el margen lateral. */
+@media (max-width: 2100px) {
+  .topnav a, .topnav-right a { padding: 0 10px; }
+  .topnav-user { padding: 0 8px; }
+}
+@media (max-width: 1750px) {
+  .topbar { --topbar-pad: 20px; }
+}
+
+/* Pantallas angostas (celulares, tabletas y portátiles chicos): arriba queda la
+   marca y un botón ☰; al pulsarlo se
+   despliegan, en columna, las opciones y después las acciones de la cuenta
+   (Cuenta, Sesiones, Cerrar sesión), que antes se salían de la pantalla. */
+@media (max-width: 1500px) {
+  .topbar { flex-wrap: wrap; gap: 0; }
   .topbar .brand { min-height: 52px; }
-  .topnav-right { order: 2; }
-  .topnav {
-    order: 3;
+  .nav-burger {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    min-height: 52px;
+    padding: 0 12px;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--cream);
+    cursor: pointer;
+    user-select: none;
+  }
+  .nav-toggle:focus-visible ~ .nav-burger { outline: 2px solid var(--cream); outline-offset: -4px; }
+
+  .topnav, .topnav-right {
+    display: none;
     flex: 0 0 100%;
-    min-height: 44px;
-    overflow-x: auto;
+    flex-direction: column;
+    align-items: stretch;
+    margin-left: 0;
     border-top: 1px solid rgba(255, 253, 249, 0.25);
   }
-  .topnav a, .topnav-right a { padding: 0 14px; }
+  .nav-toggle:checked ~ .topnav,
+  .nav-toggle:checked ~ .topnav-right { display: flex; }
+
+  .topnav a, .topnav-right a, .topnav-user { min-height: 44px; padding: 0 14px; }
+  .topnav-logout { padding: 8px 14px; }
+  .topnav-logout button { margin-left: 0; min-height: 40px; }
 }
 
 /* ---- Impresión ---- */

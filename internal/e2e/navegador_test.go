@@ -104,6 +104,10 @@ func nuevoNavegador(t *testing.T) *navegador {
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-first-run", true),
 		chromedp.Flag("no-default-browser-check", true),
+		// Tamaño de escritorio: la ventana por defecto de Chrome sin interfaz
+		// (~800 px) activa el menú ☰ del panel, que oculta los enlaces. Las
+		// pruebas de pantallas pequeñas lo cambian a propósito.
+		chromedp.WindowSize(1600, 900),
 	)
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	t.Cleanup(cancelAlloc)

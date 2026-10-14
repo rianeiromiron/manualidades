@@ -18,6 +18,11 @@
       <span class="brand-mark">✂︎</span>
       <span class="brand-text">Manualidades<em>·admin</em></span>
     </a>
+    {{/* Botón del menú para pantallas angostas. Es un checkbox: así no hace falta
+         JavaScript (la CSP prohíbe los scripts en línea). Debe ir antes de los
+         dos bloques de enlaces porque el CSS los alcanza con "~". */}}
+    <input type="checkbox" id="navToggle" class="nav-toggle" aria-label="Abrir o cerrar el menú">
+    <label for="navToggle" class="nav-burger" aria-hidden="true">☰</label>
     <nav class="topnav">
       <a href="/admin" class="{{if eq .Active "home"}}active{{end}}">Panel</a>
       {{if index .ModulosVisibles "bd"}}

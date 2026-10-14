@@ -27,7 +27,7 @@ atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 | Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido, sesiones revocables, CSRF, límite de intentos, cabeceras y CSP estricta | ✅ Hecho |
 | Usuarios y permisos | Superusuarios y usuarios administrativos con módulos asignables | ✅ Hecho |
 | Pasarela de pago | Registro de pagos (tabla `pagos`) + pasarela simulada (`pasarela-simulada`) con 3 modos: aprobar/rechazar/fallar | ✅ Hecho (simulada) |
-| Despliegue | Servidor propio gratuito (Oracle Cloud) detrás de Cloudflare, respaldos cifrados diarios y script de despliegue con reversión automática; tienda de prueba en `prueba.manualidadescristal.com` (ver [Producción](#producción)) | ✅ Hecho (falta copia de respaldo fuera del servidor) |
+| Despliegue | Servidor propio gratuito (Oracle Cloud) detrás de Cloudflare, respaldos cifrados diarios (con copia en Backblaze B2) y script de despliegue con reversión automática; tienda de prueba en `prueba.manualidadescristal.com` (ver [Producción](#producción)) | ✅ Hecho |
 | Tienda — Fase 2 | Preparación de pedidos en bodega (flujo de picking/empaque) | ⬜ Pendiente (estados ya modelados) |
 | Tienda — Fase 3 | Pasarela de pago real | ⬜ Pendiente (el punto de reemplazo ya está aislado en `internal/pasarela`) |
 | Validación de NIT contra SAT | — | ⬜ Pendiente |
@@ -605,10 +605,9 @@ Cómo llevar un cambio al servidor y cómo se respalda y restaura:
 | Desplegar (`deploy/desplegar.ps1`, skill `/desplegar` de Claude Code) | [deploy/DESPLIEGUE.md](deploy/DESPLIEGUE.md) |
 | Respaldos diarios cifrados (restic) y restauración | [deploy/RESPALDOS.md](deploy/RESPALDOS.md) |
 
-**Pendiente antes de abrir la tienda al público:** una copia de los respaldos
-fuera del servidor, una pasarela de pago real (los datos de tarjeta hoy pasan
-sin tokenizar por el servidor) y reemplazar los mensajes de error internos que
-llegan al usuario.
+**Pendiente antes de abrir la tienda al público:** una pasarela de pago real
+(los datos de tarjeta hoy pasan sin tokenizar por el servidor) y reemplazar los
+mensajes de error internos que llegan al usuario.
 
 ---
 
@@ -1011,5 +1010,6 @@ go test ./...
   antes de confirmar el pedido; el campo `cliente_nit` ya existe.
 - **Backend de almacenamiento S3-compatible**: solo si algún día se abandona la
   máquina única (hoy las fotos viven en su disco, con respaldo).
-- **Copia de respaldo fuera del servidor**: elegir un destino (Cloudflare R2,
-  Backblaze B2 u otro) y añadirlo al script de `deploy/respaldo.sh`.
+- **Aviso cuando falla un respaldo**: hoy un fallo (local o en Backblaze) solo se
+  ve en `systemctl status manualidades-respaldo` y en el registro; un servicio
+  externo de latido (por ejemplo healthchecks.io) avisaría por correo.

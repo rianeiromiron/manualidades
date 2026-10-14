@@ -41,7 +41,7 @@ func (a *App) ConfigDB(w http.ResponseWriter, r *http.Request) {
 		Host:     r.FormValue("host"),
 		Port:     port,
 		User:     r.FormValue("user"),
-		Password: r.FormValue("password"),
+		Password: passwordParaGuardar(r.FormValue("password"), cfg.Password),
 		DBName:   r.FormValue("dbname"),
 		SSLMode:  r.FormValue("sslmode"),
 	}
@@ -70,6 +70,16 @@ func (a *App) ConfigDB(w http.ResponseWriter, r *http.Request) {
 		a.reconnect(newCfg)
 		a.renderConfigDB(w, r, newCfg, "Conexión exitosa. Configuración guardada.", "success")
 	}
+}
+
+// passwordParaGuardar decide qué contraseña queda en config.json. El formulario
+// nunca recibe la contraseña guardada (no debe viajar en el HTML), así que un
+// campo vacío significa "conservar la actual".
+func passwordParaGuardar(enviada, guardada string) string {
+	if enviada == "" {
+		return guardada
+	}
+	return enviada
 }
 
 // reconnect abre un nuevo pool con la config recién guardada y lo deja
@@ -103,6 +113,9 @@ func (a *App) reconnect(cfg config.DBConfig) {
 }
 
 func (a *App) renderConfigDB(w http.ResponseWriter, r *http.Request, cfg config.DBConfig, message, kind string) {
+	// Defensa extra: aunque la plantilla no la imprima, la contraseña no llega
+	// siquiera a los datos de la página.
+	cfg.Password = ""
 	render(w, r, "config_db.html", map[string]any{
 		"Title":       "Base de datos",
 		"Active":      "bd",

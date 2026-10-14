@@ -27,7 +27,8 @@
     </label>
     <label>
       <span>Contraseña</span>
-      <input type="password" name="password" value="{{.Config.Password}}" placeholder="••••••••">
+      <input type="password" name="password" value="" autocomplete="new-password" placeholder="(sin cambios)">
+      <small>Por seguridad nunca se muestra. Déjala vacía para conservar la guardada.</small>
     </label>
     <label>
       <span>Nombre de la base de datos</span>
@@ -47,14 +48,5 @@
       <button type="submit" name="action" value="create" class="btn btn-ghost">Crear base de datos si no existe</button>
     </div>
   </form>
-</section>
-
-<section class="hint-card">
-  <h3>Valores de tu contenedor Docker local</h3>
-  <p>Según el <code>docker inspect</code> del contenedor <code>db-1</code>: host
-    <code>localhost</code>, puerto <code>5432</code>, usuario <code>postgres</code>.
-    El contenedor arrancó con la base <code>gestion_documentos</code> (de otro proyecto);
-    para manualidades se recomienda usar una base separada, por ejemplo
-    <code>manualidades</code>, y crearla con el botón de arriba.</p>
 </section>
 {{end}}

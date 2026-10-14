@@ -555,7 +555,8 @@ web/
     layout_tienda.html        layout de la tienda (colores inyectados desde Sitio)
     *.html                    una plantilla por página
   static/
-    css/style.css            estilos del admin
+    css/style.css            estilos del admin; el menú superior pasa a un botón ☰ (checkbox,
+                              sin JavaScript) por debajo de 1500 px y se compacta hasta 2100 px
     css/tienda.css            estilos de la tienda pública (con color-mix())
     js/                       todo el JavaScript (carrito.js, tienda-*.js, admin-*.js);
                               las plantillas no llevan JS inline
@@ -755,6 +756,11 @@ existe" se conecta primero a la base `postgres` (que siempre existe en
 cualquier servidor) para poder emitir `CREATE DATABASE` sin depender de la
 base destino. Pensado para que, al pasar a producción, sea lo **único** que
 cambie.
+
+La contraseña guardada **nunca se envía al navegador**: el campo aparece vacío
+con la indicación "(sin cambios)", y dejarlo vacío al guardar conserva la
+actual (`passwordParaGuardar`). Así no se puede leer con "ver código fuente"
+desde un usuario que solo tenga este módulo.
 
 ### Mantenimiento 2 — Inventario
 

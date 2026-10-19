@@ -4,11 +4,11 @@
   <p>Piezas hechas a mano, con cariño y detalle en cada una.</p>
 </section>
 
-{{if .Productos}}
-<div class="t-filtro-wrap">
+{{if .TotalCatalogo}}
+<form class="t-filtro-wrap" method="get" action="/" id="tFiltroForm">
   <div class="t-filtro-categorias" id="tFiltroCategorias">
     <button type="button" class="t-filtro-btn" id="tFiltroBtn">
-      Categorías <span id="tFiltroCount" class="t-filtro-count"></span>
+      Categorías <span id="tFiltroCount" class="t-filtro-count">{{if .FiltroActivo}}({{.Elegidas}}/{{len .Categorias}}){{end}}</span>
       <span class="t-filtro-caret">▾</span>
     </button>
     <div class="t-filtro-panel" id="tFiltroPanel" hidden>
@@ -17,18 +17,23 @@
       <div class="t-filtro-lista">
         {{range .Categorias}}
         <label class="t-filtro-check-row">
-          <input type="checkbox" class="t-cat-checkbox" value="{{.ID}}" checked>
+          <input type="checkbox" class="t-cat-checkbox" name="cat" value="{{.ID}}" {{if .Marcada}}checked{{end}}>
           <span>{{.Nombre}}</span>
         </label>
         {{end}}
       </div>
+      <button type="submit" class="t-btn t-btn-primary t-btn-block t-filtro-aplicar">Aplicar</button>
+      {{if .FiltroActivo}}<a class="t-filtro-accion t-filtro-limpiar" href="/">Quitar filtro</a>{{end}}
     </div>
   </div>
-</div>
+</form>
+
+{{if .Productos}}
+<p class="t-resumen">Mostrando {{.Desde}}–{{.Hasta}} de {{.TotalFiltrados}} productos</p>
 
 <div class="t-grid" id="tGrid">
   {{range .Productos}}
-  <div class="t-card" data-categoria-id="{{.CategoriaID}}">
+  <div class="t-card">
     <div class="t-card-thumb-outer">
       <a class="t-card-thumb-wrap" href="/producto/{{.ID}}">
         {{if .FotoPortada}}
@@ -60,8 +65,22 @@
     </div>
   </div>
   {{end}}
-  <p id="tSinResultados" class="t-empty" hidden>Ningún producto coincide con las categorías elegidas.</p>
 </div>
+
+{{if gt .TotalPaginas 1}}
+<nav class="t-paginacion" aria-label="Paginación del catálogo">
+  {{if .Anterior}}<a class="t-btn t-btn-ghost" href="{{.Anterior}}" rel="prev">‹ Anterior</a>{{end}}
+  {{range .Enlaces}}
+    {{if .Puntos}}<span class="t-pag-puntos">…</span>
+    {{else if .Actual}}<span class="t-pag-num t-pag-actual" aria-current="page">{{.N}}</span>
+    {{else}}<a class="t-pag-num" href="{{.URL}}">{{.N}}</a>{{end}}
+  {{end}}
+  {{if .Siguiente}}<a class="t-btn t-btn-ghost" href="{{.Siguiente}}" rel="next">Siguiente ›</a>{{end}}
+</nav>
+{{end}}
+{{else}}
+<p class="t-empty" id="tSinResultados">Ningún producto coincide con las categorías elegidas.</p>
+{{end}}
 {{else}}
 <p class="t-empty">Todavía no hay productos publicados.</p>
 {{end}}

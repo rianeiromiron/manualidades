@@ -1,31 +1,15 @@
 (function () {
-  var cards = Array.prototype.slice.call(document.querySelectorAll('#tGrid .t-card'));
   var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.t-cat-checkbox'));
   var btn = document.getElementById('tFiltroBtn');
   var panel = document.getElementById('tFiltroPanel');
   var wrap = document.getElementById('tFiltroCategorias');
   var count = document.getElementById('tFiltroCount');
-  var sinResultados = document.getElementById('tSinResultados');
 
-  function activas() {
-    var set = {};
-    checkboxes.forEach(function (cb) { if (cb.checked) set[cb.value] = true; });
-    return set;
-  }
-
+  // El filtro y la paginación los resuelve el servidor (?cat=..&pagina=..):
+  // aquí solo se refleja cuántas categorías hay marcadas mientras se elige.
   function aplicar() {
-    var set = activas();
-    var visibles = 0;
-    cards.forEach(function (card) {
-      var visible = !!set[card.dataset.categoriaId];
-      card.hidden = !visible;
-      if (visible) visibles++;
-    });
-    if (sinResultados) sinResultados.hidden = visibles !== 0;
-
-    var total = checkboxes.length;
-    var n = Object.keys(set).length;
-    count.textContent = '(' + n + '/' + total + ')';
+    var n = checkboxes.filter(function (cb) { return cb.checked; }).length;
+    count.textContent = n === checkboxes.length ? '' : '(' + n + '/' + checkboxes.length + ')';
   }
 
   checkboxes.forEach(function (cb) { cb.addEventListener('change', aplicar); });
@@ -47,8 +31,6 @@
   document.addEventListener('click', function (e) {
     if (!wrap.contains(e.target)) panel.hidden = true;
   });
-
-  aplicar();
 
   Array.prototype.slice.call(document.querySelectorAll('.t-agregar')).forEach(function (btn) {
     btn.addEventListener('click', function () {

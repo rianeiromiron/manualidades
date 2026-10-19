@@ -109,11 +109,67 @@ func (a *App) TiendaHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.renderTienda(w, "tienda_home.html", map[string]any{
-		"Title":      "",
-		"Productos":  productos,
-		"Categorias": categorias,
-	})
+
+	// Filtro por categorías (?cat=1&cat=2): sin ninguna válida se muestran
+	// todas. Los ids desconocidos se ignoran.
+	existentes := make(map[int]bool, len(categorias))
+	for _, c := range categorias {
+		existentes[c.ID] = true
+	}
+	elegidas := map[int]bool{}
+	var elegidasLista []int
+	for _, s := range r.URL.Query()["cat"] {
+		if id, err := strconv.Atoi(s); err == nil && existentes[id] && !elegidas[id] {
+			elegidas[id] = true
+			elegidasLista = append(elegidasLista, id)
+		}
+	}
+	filtradas := productos
+	if len(elegidas) > 0 {
+		filtradas = make([]inventario.Producto, 0, len(productos))
+		for _, p := range productos {
+			if elegidas[p.CategoriaID] {
+				filtradas = append(filtradas, p)
+			}
+		}
+	}
+
+	visibles, paginaActual, totalPaginas := paginar(filtradas, parsePagina(r.URL.Query().Get("pagina")), productosPorPagina)
+	urlDe := func(n int) string { return urlCatalogo(elegidasLista, n) }
+
+	type categoriaFiltro struct {
+		ID      int
+		Nombre  string
+		Marcada bool
+	}
+	filtro := make([]categoriaFiltro, 0, len(categorias))
+	for _, c := range categorias {
+		filtro = append(filtro, categoriaFiltro{c.ID, c.Nombre, len(elegidas) == 0 || elegidas[c.ID]})
+	}
+
+	datos := map[string]any{
+		"Title":          "",
+		"Productos":      visibles,
+		"TotalCatalogo":  len(productos),
+		"TotalFiltrados": len(filtradas),
+		"Categorias":     filtro,
+		"FiltroActivo":   len(elegidas) > 0,
+		"Elegidas":       len(elegidas),
+		"Pagina":         paginaActual,
+		"TotalPaginas":   totalPaginas,
+		"Enlaces":        enlacesPagina(paginaActual, totalPaginas, urlDe),
+	}
+	if len(filtradas) > 0 {
+		datos["Desde"] = (paginaActual-1)*productosPorPagina + 1
+		datos["Hasta"] = (paginaActual-1)*productosPorPagina + len(visibles)
+	}
+	if paginaActual > 1 {
+		datos["Anterior"] = urlDe(paginaActual - 1)
+	}
+	if paginaActual < totalPaginas {
+		datos["Siguiente"] = urlDe(paginaActual + 1)
+	}
+	a.renderTienda(w, "tienda_home.html", datos)
 }
 
 func (a *App) TiendaProducto(w http.ResponseWriter, r *http.Request) {

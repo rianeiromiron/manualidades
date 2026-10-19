@@ -396,11 +396,14 @@ func TestNavegadorTiendaFuncionaConLaCSP(t *testing.T) {
 	n.espera(t, "el panel de filtros se abre", `!document.getElementById('tFiltroPanel').hidden`)
 
 	n.correr(t, chromedp.Click(`[data-action="none"]`))
-	n.espera(t, "«ninguna» oculta todas las tarjetas y avisa",
-		`Array.from(document.querySelectorAll('#tGrid .t-card')).every(c => c.hidden) && !document.getElementById('tSinResultados').hidden`)
+	n.espera(t, "«deseleccionar todas» desmarca las casillas y lo refleja en el contador",
+		`Array.from(document.querySelectorAll('.t-cat-checkbox')).every(c => !c.checked) && document.getElementById('tFiltroCount').textContent === '(0/1)'`)
 	n.correr(t, chromedp.Click(`[data-action="all"]`))
-	n.espera(t, "«todas» vuelve a mostrar las tarjetas",
-		`Array.from(document.querySelectorAll('#tGrid .t-card')).every(c => !c.hidden)`)
+	n.espera(t, "«seleccionar todas» marca las casillas y vacía el contador",
+		`Array.from(document.querySelectorAll('.t-cat-checkbox')).every(c => c.checked) && document.getElementById('tFiltroCount').textContent === ''`)
+	n.correr(t, chromedp.Click(`#tFiltroPanel button[type="submit"]`))
+	n.espera(t, "«aplicar» recarga el catálogo con el servidor",
+		`document.querySelectorAll('#tGrid .t-card').length === 1`)
 
 	n.correr(t, chromedp.Click(`.t-agregar`))
 	n.espera(t, "agregar desde el inicio guarda en el carrito",

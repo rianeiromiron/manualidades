@@ -104,8 +104,13 @@ func TestTiendaUsaStockDisponible(t *testing.T) {
 	}
 
 	out = ejecutarContent(t, "tienda_home.html", map[string]any{
-		"Productos":  []inventario.Producto{agotado, hay},
-		"Categorias": []inventario.Categoria{},
+		"Productos":      []inventario.Producto{agotado, hay},
+		"Categorias":     []inventario.Categoria{},
+		"TotalCatalogo":  2,
+		"TotalFiltrados": 2,
+		"Desde":          1,
+		"Hasta":          2,
+		"TotalPaginas":   1,
 	})
 	if !strings.Contains(out, `data-stock="3"`) || !strings.Contains(out, "Agotado") {
 		t.Error("tienda_home: debe usar el disponible para el tope del carrito y el estado Agotado")

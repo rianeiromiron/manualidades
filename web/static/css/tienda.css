@@ -381,3 +381,21 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
   .t-form-grid label.span-2, .t-entrega-opciones { grid-column: span 1; }
   .t-linea { grid-template-columns: 56px 1fr auto; }
 }
+
+/* ---- Paginación del catálogo ---- */
+.t-resumen { text-align: center; color: var(--t-texto-suave); font-size: 0.9rem; margin: -14px 0 22px; }
+.t-filtro-aplicar { margin-top: 10px; }
+.t-filtro-limpiar { display: block; text-align: center; margin-top: 6px; text-decoration: none; }
+.t-paginacion {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 8px; margin: 36px 0 12px;
+}
+.t-pag-num, .t-pag-puntos {
+  min-width: 40px; height: 40px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; text-decoration: none; color: var(--t-texto);
+  border: 1.5px solid var(--t-marco-suave); background: var(--t-paper);
+}
+a.t-pag-num:hover { background: var(--t-acento-suave); }
+.t-pag-actual { background: var(--t-acento); border-color: var(--t-acento); color: #fff; font-weight: 700; }
+.t-pag-puntos { border: none; background: none; min-width: 20px; padding: 0; }

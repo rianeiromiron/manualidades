@@ -1,4 +1,20 @@
 (function () {
+  // Si el carrito trae más de lo disponible (por ejemplo, de antes de que se
+  // respetara el límite), se corrige y se le dice al cliente qué cambió.
+  var ajustes = Carrito.ajustarAlStock();
+  var aviso = document.getElementById('tCarritoAviso');
+  if (aviso && ajustes.length) {
+    aviso.textContent = '';
+    ajustes.forEach(function (a) {
+      var p = document.createElement('p');
+      p.textContent = a.ahora > 0
+        ? 'Ajustamos «' + a.nombre + '» de ' + a.antes + ' a ' + a.ahora + ' unidad' + (a.ahora === 1 ? '' : 'es') + ', que es lo que hay disponible.'
+        : 'Quitamos «' + a.nombre + '» porque ya no hay unidades disponibles.';
+      aviso.appendChild(p);
+    });
+    aviso.hidden = false;
+  }
+
   function render() {
     var items = Carrito.obtener();
     var vacio = document.getElementById('tCarritoVacio');
@@ -58,8 +74,12 @@
         Carrito.actualizarCantidad(item.productoId, item.cantidad - 1);
         render();
       });
+      var limite = Carrito.limiteDe(item.stock);
+      if (item.cantidad >= limite) {
+        mas.disabled = true;
+        mas.title = 'Es todo lo que hay disponible';
+      }
       mas.addEventListener('click', function () {
-        var limite = item.stock || Infinity;
         Carrito.actualizarCantidad(item.productoId, Math.min(item.cantidad + 1, limite));
         render();
       });

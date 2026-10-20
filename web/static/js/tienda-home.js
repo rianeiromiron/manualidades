@@ -32,18 +32,31 @@
     if (!wrap.contains(e.target)) panel.hidden = true;
   });
 
-  Array.prototype.slice.call(document.querySelectorAll('.t-agregar')).forEach(function (btn) {
+  var botones = Array.prototype.slice.call(document.querySelectorAll('.t-agregar'));
+  var TEXTO = 'Agregar al carrito';
+  botones.forEach(function (btn) {
     btn.addEventListener('click', function () {
-      Carrito.agregar({
+      var r = Carrito.agregar({
         productoId: parseInt(btn.getAttribute('data-id'), 10),
         nombre: btn.getAttribute('data-nombre'),
         precio: parseFloat(btn.getAttribute('data-precio')),
         foto: btn.getAttribute('data-foto'),
         stock: parseFloat(btn.getAttribute('data-stock'))
       }, 1);
-      var textoOriginal = btn.textContent;
+      if (r.agregado === 0) {
+        Carrito.sincronizarBoton(btn, TEXTO);
+        return;
+      }
       btn.textContent = 'Agregado ✓';
-      setTimeout(function () { btn.textContent = textoOriginal; }, 1200);
+      setTimeout(function () { Carrito.sincronizarBoton(btn, TEXTO); }, 1200);
     });
   });
+
+  // Los botones reflejan lo que ya hay en el carrito: al cargar, y al volver con
+  // «Atrás» (el navegador puede mostrar la página tal como estaba).
+  function sincronizarTodos() {
+    botones.forEach(function (btn) { Carrito.sincronizarBoton(btn, TEXTO); });
+  }
+  sincronizarTodos();
+  window.addEventListener('pageshow', function (e) { if (e.persisted) sincronizarTodos(); });
 })();

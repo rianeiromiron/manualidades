@@ -7,6 +7,9 @@
     if (e.persisted) window.location.reload();
   });
 
+  // Un carrito con más de lo disponible se corrige antes de mostrar el resumen; el
+  // servidor lo vuelve a comprobar al crear el pedido.
+  var ajustes = Carrito.ajustarAlStock();
   var items = Carrito.obtener();
   var vacio = document.getElementById('tCheckoutVacio');
   var contenido = document.getElementById('tCheckoutContenido');
@@ -62,6 +65,12 @@
   var form = document.getElementById('tFormCheckout');
   var errorBox = document.getElementById('tCheckoutError');
   var btn = document.getElementById('tPagarBtn');
+  if (ajustes.length) {
+    errorBox.textContent = ajustes.map(function (a) {
+      return 'Ajustamos «' + a.nombre + '» a lo que hay disponible (' + a.ahora + ').';
+    }).join(' ');
+    errorBox.hidden = false;
+  }
 
   // Forma de pago: tarjeta o transferencia (solo si la tienda tiene cuentas).
   var tarjetaCampos = document.getElementById('tTarjetaCampos');

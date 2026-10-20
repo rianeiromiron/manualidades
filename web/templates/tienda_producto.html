@@ -33,6 +33,7 @@
     <button type="button" class="t-btn t-btn-primary" id="tAgregarBtn"
             data-id="{{.Producto.ID}}" data-nombre="{{.Producto.Nombre}}" data-precio="{{.Producto.PrecioVenta}}"
             data-foto="{{.Producto.FotoPortada}}" data-stock="{{printf "%.0f" .Producto.Disponible}}">Agregar al carrito</button>
+    <p id="tAgregarAviso" class="t-aviso-stock" role="status" hidden></p>
     {{end}}
     <p style="margin-top:16px;"><a href="/carrito">Ver carrito →</a></p>
   </div>

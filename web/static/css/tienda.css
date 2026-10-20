@@ -343,7 +343,7 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
 
 .t-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .t-form-grid label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 0.88rem; grid-column: span 1; }
-.t-form-grid label.span-2 { grid-column: span 2; }
+.t-form-grid label.span-2, .t-form-grid > div.span-2 { grid-column: span 2; }
 .t-form-grid input, .t-form-grid textarea {
   font: inherit; padding: 11px 13px; border-radius: 10px;
   border: 1.5px solid var(--t-marco-suave); background: var(--t-paper); color: var(--t-texto);
@@ -378,7 +378,7 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
 @media (max-width: 720px) {
   .t-detalle { grid-template-columns: 1fr; }
   .t-form-grid { grid-template-columns: 1fr; }
-  .t-form-grid label.span-2, .t-entrega-opciones { grid-column: span 1; }
+  .t-form-grid label.span-2, .t-form-grid > div.span-2, .t-entrega-opciones { grid-column: span 1; }
   .t-linea { grid-template-columns: 56px 1fr auto; }
 }
 

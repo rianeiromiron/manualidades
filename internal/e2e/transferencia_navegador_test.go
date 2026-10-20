@@ -47,6 +47,17 @@ func TestNavegadorCheckoutPorTransferencia(t *testing.T) {
 	n.espera(t, "al volver a recoger se quita el envío",
 		`document.getElementById('tResumenEnvio').hidden && document.getElementById('tResumenTotal').textContent === 'Q 25.00'`)
 
+	// Con la transferencia elegida, el aviso y el botón ocupan todo el ancho del
+	// formulario (antes cada uno quedaba a media columna).
+	n.correr(t, chromedp.Click(`input[name="metodo_pago"][value="transferencia"]`))
+	n.espera(t, "el aviso y el botón ocupan todo el ancho",
+		`(function(){
+			var f = document.getElementById('tFormCheckout').getBoundingClientRect().width;
+			var aviso = document.getElementById('tTransferenciaInfo').getBoundingClientRect().width;
+			var boton = document.getElementById('tPagarBtn').getBoundingClientRect().width;
+			return aviso > f * 0.95 && boton > f * 0.95;
+		})()`)
+
 	// Recorrido: transferencia → página del pedido.
 	n.correr(t,
 		chromedp.Click(`input[name="metodo_pago"][value="transferencia"]`),
@@ -60,6 +71,13 @@ func TestNavegadorCheckoutPorTransferencia(t *testing.T) {
 	n.espera(t, "se ve la cuenta bancaria y el formulario del comprobante",
 		`document.body.innerText.includes('0000-0000-1') && !!document.querySelector('input[type="file"][name="comprobante"]')`)
 	n.espera(t, "el carrito quedó vacío", `(JSON.parse(localStorage.getItem('manualidades_carrito'))||[]).length === 0`)
+
+	// «Atrás» no debe devolver un formulario trabado en «Procesando…»: el pedido
+	// ya se creó y el carrito está vacío.
+	n.correr(t, chromedp.NavigateBack())
+	n.espera(t, "al volver atrás el checkout no queda trabado",
+		`location.pathname === '/checkout' && !document.getElementById('tCheckoutVacio').hidden
+		 && document.getElementById('tCheckoutContenido').hidden && !document.getElementById('tPagarBtn').disabled`)
 
 	var estado string
 	e.Conn.QueryRow(`SELECT estado FROM pedidos`).Scan(&estado)

@@ -1,4 +1,12 @@
 (function () {
+  // Al volver con «Atrás» el navegador puede restaurar esta página tal como quedó,
+  // con el botón en «Procesando…» y el resumen viejo, aunque el pedido ya se
+  // haya creado y el carrito esté vacío. Se recarga para armarla de nuevo con el
+  // carrito de ahora.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) window.location.reload();
+  });
+
   var items = Carrito.obtener();
   var vacio = document.getElementById('tCheckoutVacio');
   var contenido = document.getElementById('tCheckoutContenido');

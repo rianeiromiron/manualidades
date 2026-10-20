@@ -53,6 +53,10 @@
       <span>Correos que reciben los avisos de la tienda (uno por línea, máximo {{.MaxAvisos}})</span>
       <textarea name="destinatarios" rows="3" placeholder="dueña@ejemplo.com">{{.Form.Destinatarios}}</textarea>
     </label>
+    <label class="span-2">
+      <span>Dirección pública de la tienda (la que llevan los enlaces de los correos)</span>
+      <input type="text" name="url_tienda" value="{{.Form.UrlTienda}}" maxlength="200" placeholder="https://prueba.manualidadescristal.com">
+    </label>
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Guardar</button>
     </div>

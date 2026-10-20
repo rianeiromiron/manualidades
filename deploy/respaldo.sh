@@ -28,6 +28,10 @@ ARCHIVOS=("$STAGE/manualidades.dump" "$APP_DIR/media" "$APP_DIR/admin.json" "$AP
 if [ -f "$APP_DIR/smtp.json" ]; then
   ARCHIVOS+=("$APP_DIR/smtp.json")
 fi
+# comprobantes/ (imágenes de transferencias) existe desde el primer comprobante.
+if [ -d "$APP_DIR/comprobantes" ]; then
+  ARCHIVOS+=("$APP_DIR/comprobantes")
+fi
 restic backup --host manualidades --tag diario "${ARCHIVOS[@]}"
 
 # 3. Historial: 7 diarias, 4 semanales y 6 mensuales.

@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS config_sitio (
 );
 
 INSERT INTO config_sitio (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Lo que se cobra por entregar un pedido a domicilio. Vive en la base de datos,
+-- no en el código: se cambia desde el admin (Sitio web). Q 45.00 de inicio.
+ALTER TABLE config_sitio ADD COLUMN IF NOT EXISTS costo_envio NUMERIC(12,2) NOT NULL DEFAULT 45.00
+	CHECK (costo_envio >= 0 AND costo_envio <= 9999.99);
 `
 
 // Migrate crea la tabla de configuración del sitio (una sola fila) si

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"manualidades/internal/cuentas"
 	"manualidades/internal/inventario"
 	"manualidades/internal/pasarela"
 	"manualidades/internal/sitio"
@@ -92,6 +93,21 @@ func productosActivos(conn *sql.DB) ([]inventario.Producto, error) {
 		return nil, err
 	}
 	return activos, nil
+}
+
+// costoEnvioPara devuelve lo que se cobra de envío según cómo se entrega el
+// pedido: el costo configurado en el sitio si es a domicilio, y nada si lo
+// recoge en la tienda. Siempre lo calcula el servidor: el navegador no manda ni
+// puede cambiar este monto.
+func costoEnvioPara(conn *sql.DB, metodoEntrega string) (float64, error) {
+	if metodoEntrega != "domicilio" {
+		return 0, nil
+	}
+	cfg, err := sitio.Get(conn)
+	if err != nil {
+		return 0, err
+	}
+	return cfg.CostoEnvio, nil
 }
 
 func (a *App) TiendaHome(w http.ResponseWriter, r *http.Request) {
@@ -207,10 +223,19 @@ func (a *App) TiendaCarrito(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) TiendaCheckout(w http.ResponseWriter, r *http.Request) {
-	if a.requireTiendaDB(w) == nil {
+	conn := a.requireTiendaDB(w)
+	if conn == nil {
 		return
 	}
-	a.renderTienda(w, "tienda_checkout.html", map[string]any{"Title": "Checkout"})
+	// La transferencia solo se ofrece si hay una cuenta a la que transferir.
+	activas, err := cuentas.ListActivas(conn)
+	if err != nil {
+		log.Printf("checkout: leyendo cuentas bancarias: %v", err)
+	}
+	a.renderTienda(w, "tienda_checkout.html", map[string]any{
+		"Title":            "Checkout",
+		"HayTransferencia": len(activas) > 0,
+	})
 }
 
 type itemConfirmarJSON struct {
@@ -338,6 +363,14 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	envio, err := costoEnvioPara(conn, body.MetodoEntrega)
+	if err != nil {
+		log.Printf("tienda: leyendo el costo de envío: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "No se pudo cotizar el pedido. No se te cobró nada."})
+		return
+	}
+	total += envio
+
 	// 1. Reservar el stock. Todavía no se cobra nada.
 	tokenPrevio := ""
 	if c, err := r.Cookie(cookiePedido); err == nil {
@@ -351,6 +384,7 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 		MetodoEntrega:    body.MetodoEntrega,
 		DireccionEntrega: body.DireccionEntrega,
 		Notas:            body.Notas,
+		CostoEnvio:       envio,
 	}, lineas, total)
 	switch {
 	case errors.Is(err, inventario.ErrStockInsuficiente):

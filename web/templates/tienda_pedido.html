@@ -1,0 +1,124 @@
+{{define "content"}}
+<section class="t-hero t-hero-compacto">
+  <h1>Pedido #{{.Pedido.ID}}</h1>
+  <p>Hola, {{.Pedido.ClienteNombre}}. Aquí puedes ver el estado de tu pedido.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}} t-aviso">{{.Message}}</div>
+{{end}}
+
+<div class="t-pedido-grid">
+  <div class="t-pedido-pasos">
+
+    {{if .Esperando}}
+    <section class="t-paso">
+      <h3>1. Haz la transferencia</h3>
+      <p>Transfiere <strong>Q {{printf "%.2f" .Pedido.Total}}</strong> a una de estas cuentas y escribe
+        <strong>Pedido #{{.Pedido.ID}}</strong> como referencia o comentario.</p>
+      {{range .Cuentas}}
+      <div class="t-cuenta">
+        <p class="t-cuenta-banco">{{.Banco}}</p>
+        <p>Cuenta {{.TipoNombre}} en {{.Moneda}}</p>
+        <p class="t-cuenta-numero">{{.Numero}}</p>
+        <p>A nombre de: {{.Titular}}</p>
+        {{if .Instrucciones}}<p class="t-cuenta-nota">{{.Instrucciones}}</p>{{end}}
+      </div>
+      {{else}}
+      <p class="t-empty">Por ahora no hay cuentas disponibles. Comunícate con la tienda.</p>
+      {{end}}
+      <p class="t-plazo">Guardamos tus productos hasta el <strong>{{localtime .Pedido.ExpiraEn "02/01/2006 15:04"}}</strong>.
+        Si para entonces no recibimos tu comprobante, el pedido se cancela.</p>
+    </section>
+
+    <section class="t-paso">
+      <h3>2. Sube tu comprobante</h3>
+      {{if .PuedeSubir}}
+      <form method="post" action="/pedido/{{.Token}}/comprobante" enctype="multipart/form-data" class="t-form-grid">
+        <label class="span-2">
+          <span>Banco desde el que transferiste</span>
+          <input type="text" name="banco_origen" maxlength="100" required>
+        </label>
+        <label>
+          <span>Número de boleta o autorización</span>
+          <input type="text" name="numero_boleta" maxlength="40" required>
+        </label>
+        <label>
+          <span>Fecha de la transferencia</span>
+          <input type="date" name="fecha" min="{{.Desde}}" max="{{.Hoy}}" value="{{.Hoy}}" required>
+        </label>
+        <label class="span-2">
+          <span>Foto o captura del comprobante (JPG, PNG o WebP, máximo 10 MB)</span>
+          <input type="file" name="comprobante" accept="image/jpeg,image/png,image/webp" required>
+        </label>
+        <div class="span-2">
+          <button type="submit" class="t-btn t-btn-primary t-btn-block">Enviar comprobante</button>
+        </div>
+      </form>
+      {{else}}
+      <p>Ya enviaste el máximo de comprobantes para este pedido.</p>
+      {{end}}
+    </section>
+    {{else if eq .Pedido.Estado "transferencia_por_revisar"}}
+    <section class="t-paso">
+      <h3>Estamos revisando tu transferencia</h3>
+      <p>Recibimos tu comprobante. Cuando confirmemos el depósito, tu pedido pasará a pagado y te avisaremos por correo.
+        Tus productos están guardados mientras tanto.</p>
+    </section>
+    {{else if eq .Pedido.Estado "expirado"}}
+    <section class="t-paso">
+      <h3>El plazo de este pedido venció</h3>
+      <p>No recibimos el comprobante a tiempo y los productos volvieron a estar disponibles.
+        Si ya hiciste la transferencia, comunícate con la tienda y ten a mano tu comprobante.</p>
+    </section>
+    {{else if eq .Pedido.Estado "cancelado"}}
+    <section class="t-paso">
+      <h3>Este pedido fue cancelado</h3>
+      <p>Si tienes dudas, comunícate con la tienda.</p>
+    </section>
+    {{else}}
+    <section class="t-paso">
+      <h3>Pago confirmado</h3>
+      <p>Estado de tu pedido:
+        <strong>{{if eq .Pedido.Estado "procesando"}}en preparación{{else if eq .Pedido.Estado "entregado"}}entregado{{else}}pagado{{end}}</strong>.
+        {{if eq .Pedido.MetodoEntrega "domicilio"}}Te lo entregaremos en: {{.Pedido.DireccionEntrega}}.{{else}}Puedes recogerlo en la tienda.{{end}}</p>
+    </section>
+    {{end}}
+
+    {{if .Comprobantes}}
+    <section class="t-paso">
+      <h3>Comprobantes enviados</h3>
+      {{range .Comprobantes}}
+      <p class="t-comprobante">
+        Boleta <strong>{{.NumeroBoleta}}</strong> · {{.BancoOrigen}} · {{.Fecha.Format "02/01/2006"}} —
+        {{if eq .Estado "aceptado"}}aceptado{{else if eq .Estado "rechazado"}}rechazado{{if .Nota}}: {{.Nota}}{{end}}{{else}}en revisión{{end}}
+      </p>
+      {{end}}
+    </section>
+    {{end}}
+
+    <p class="t-ayuda">¿Dudas? {{if .Sitio.Telefono}}Llámanos al {{.Sitio.Telefono}}{{end}}{{if and .Sitio.Telefono .Sitio.Email}} o {{end}}{{if .Sitio.Email}}escríbenos a {{.Sitio.Email}}{{end}}.
+      Guarda esta página: es tu enlace para volver a tu pedido.</p>
+  </div>
+
+  <div class="t-resumen">
+    <h3>Resumen del pedido</h3>
+    {{range .Pedido.Items}}
+    <p class="t-resumen-linea">
+      <span>{{printf "%.0f" .Cantidad}}× {{.NombreProducto}}</span>
+      <span>Q {{printf "%.2f" .Subtotal}}</span>
+    </p>
+    {{end}}
+    {{if gt .Pedido.CostoEnvio 0.0}}
+    <p class="t-resumen-linea">
+      <span>Envío a domicilio</span>
+      <span>Q {{printf "%.2f" .Pedido.CostoEnvio}}</span>
+    </p>
+    {{end}}
+    <div class="t-resumen-total">
+      <span>Total</span>
+      <span>Q {{printf "%.2f" .Pedido.Total}}</span>
+    </div>
+  </div>
+</div>
+{{end}}

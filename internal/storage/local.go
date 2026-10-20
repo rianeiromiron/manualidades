@@ -44,6 +44,16 @@ func (l *Local) Save(filename string, data io.Reader) (string, error) {
 	return unique, nil
 }
 
+// Abrir abre un archivo guardado por nombre. Solo acepta nombres simples (los
+// que genera Save): cualquier ruta con carpetas o «..» se rechaza, para que un
+// nombre manipulado no pueda salir de la carpeta.
+func (l *Local) Abrir(nombre string) (*os.File, error) {
+	if nombre == "" || nombre != filepath.Base(nombre) || strings.ContainsAny(nombre, `/\`) || nombre == "." || nombre == ".." {
+		return nil, os.ErrNotExist
+	}
+	return os.Open(filepath.Join(l.Dir, nombre))
+}
+
 func (l *Local) URL(path string) string {
 	return l.URLPrefix + "/" + path
 }

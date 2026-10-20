@@ -18,6 +18,12 @@
     <span>Q {{printf "%.2f" .Subtotal}}</span>
   </p>
   {{end}}
+  {{if gt .Pedido.CostoEnvio 0.0}}
+  <p class="t-resumen-linea">
+    <span>Envío a domicilio</span>
+    <span>Q {{printf "%.2f" .Pedido.CostoEnvio}}</span>
+  </p>
+  {{end}}
   <div class="t-resumen-total">
     <span>Total</span>
     <span>Q {{printf "%.2f" .Pedido.Total}}</span>

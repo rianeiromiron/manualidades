@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -48,6 +49,11 @@ type Config struct {
 	DesdeNombre   string   `json:"desde_nombre"`
 	DesdeCorreo   string   `json:"desde_correo"`
 	Destinatarios []string `json:"destinatarios"`
+	// UrlTienda es la dirección pública de la tienda (https://dominio), la que
+	// llevan los enlaces de los correos. Se configura a mano y NO se deduce de la
+	// petición: la cabecera Host la controla quien hace el pedido, y un enlace
+	// armado con ella permitiría mandar correos con enlaces a un sitio falso.
+	UrlTienda string `json:"url_tienda"`
 }
 
 // Configurado indica si hay lo mínimo para poder enviar.
@@ -171,7 +177,39 @@ func (c Config) Limpiar() (Config, error) {
 	if len(c.Destinatarios) > MaxDestinatarios {
 		return c, invalido("Se admiten como máximo %d correos de aviso.", MaxDestinatarios)
 	}
+	u, err := LimpiarUrlTienda(c.UrlTienda)
+	if err != nil {
+		return c, err
+	}
+	c.UrlTienda = u
 	return c, nil
+}
+
+// LimpiarUrlTienda valida la dirección pública de la tienda y la devuelve sin
+// barra final. Vacía es válida (aún no configurada). Debe ser https, salvo
+// localhost para desarrollo; sin ruta, parámetros ni usuario.
+func LimpiarUrlTienda(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	if err := sinControl("La dirección de la tienda", s); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(s)
+	malo := invalido("La dirección de la tienda debe ser como https://tienda.ejemplo.com (sin rutas ni parámetros).")
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", malo
+	}
+	host := u.Hostname()
+	local := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+		return "", invalido("La dirección de la tienda debe empezar con https:// (http solo se admite en localhost).")
+	}
+	if !local && !reServidor.MatchString(host) {
+		return "", malo
+	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 // archivo es la ruta de smtp.json (relativa al directorio de trabajo, como

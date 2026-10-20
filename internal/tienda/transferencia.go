@@ -63,11 +63,11 @@ func IniciarTransferencia(conn *sql.DB, datos DatosPedido, lineas []LineaPedido,
 	err = tx.QueryRow(
 		`INSERT INTO pedidos
 			(cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			 metodo_entrega, direccion_entrega, notas, total, estado, expira_en, token)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, `+sqlExpiraTransferencia+`, $10)
+			 metodo_entrega, direccion_entrega, notas, total, estado, expira_en, token, metodo_pago, costo_envio)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, `+sqlExpiraTransferencia+`, $10, $11, $12)
 		 RETURNING id`,
 		datos.ClienteNombre, datos.ClienteTelefono, datos.ClienteEmail, nit,
-		datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoEsperaTransferencia, token,
+		datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoEsperaTransferencia, token, MetodoPagoTransferencia, datos.CostoEnvio,
 	).Scan(&pedidoID)
 	if err != nil {
 		return Transferencia{}, err

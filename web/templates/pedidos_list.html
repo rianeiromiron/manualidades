@@ -10,11 +10,18 @@
   </div>
 </section>
 
+{{if .PorRevisar}}
+<div class="alert alert-error">
+  {{if eq .PorRevisar 1}}Hay <strong>1 transferencia por revisar</strong>.{{else}}Hay <strong>{{.PorRevisar}} transferencias por revisar</strong>.{{end}}
+  Están más abajo, en «Pendientes de pago».
+</div>
+{{end}}
+
 <section class="panel">
   {{if .Pedidos}}
   <table class="data-table">
     <thead>
-      <tr><th>Fecha</th><th>Cliente</th><th>Entrega</th><th>Estado</th><th>Total</th><th></th></tr>
+      <tr><th>Fecha</th><th>Cliente</th><th>Entrega</th><th>Pago</th><th>Estado</th><th>Total</th><th></th></tr>
     </thead>
     <tbody>
       {{range .Pedidos}}
@@ -22,6 +29,7 @@
         <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
         <td>{{if eq .MetodoEntrega "domicilio"}}Domicilio{{else}}Recoger en tienda{{end}}</td>
+        <td>{{if eq .MetodoPago "transferencia"}}Transferencia{{else}}Tarjeta{{end}}</td>
         <td>
           <span class="estado-badge estado-{{.Estado}}">
             {{if eq .Estado "procesando"}}Procesando en bodega
@@ -46,23 +54,27 @@
 {{if .Pendientes}}
 <section class="panel">
   <h3>Pendientes de pago</h3>
-  <p class="lead">Reservan stock hasta que vencen, pero todavía no se pagan: no se despachan.</p>
+  <p class="lead">Reservan stock, pero todavía no se pagan: no se despachan. Las transferencias con comprobante esperan tu revisión y no vencen.</p>
   <table class="data-table">
     <thead>
-      <tr><th>Fecha</th><th>Cliente</th><th>Estado</th><th>Total</th><th>Reserva vence</th><th></th></tr>
+      <tr><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Estado</th><th>Total</th><th>Reserva vence</th><th></th></tr>
     </thead>
     <tbody>
       {{range .Pendientes}}
       <tr>
         <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
+        <td>{{if eq .MetodoPago "transferencia"}}Transferencia{{else}}Tarjeta{{end}}</td>
         <td>
           <span class="estado-badge estado-{{.Estado}}">
-            {{if eq .Estado "pagando"}}Cobrando{{else}}Pendiente de pago{{end}}
+            {{if eq .Estado "pagando"}}Cobrando
+            {{else if eq .Estado "espera_transferencia"}}Esperando transferencia
+            {{else if eq .Estado "transferencia_por_revisar"}}Transferencia por revisar
+            {{else}}Pendiente de pago{{end}}
           </span>
         </td>
         <td>Q {{printf "%.2f" .Total}}</td>
-        <td>{{if .ExpiraEn}}{{localtime .ExpiraEn "15:04"}}{{end}}</td>
+        <td>{{if .ExpiraEn}}{{localtime .ExpiraEn "02/01 15:04"}}{{else if eq .Estado "transferencia_por_revisar"}}Hasta que la revises{{end}}</td>
         <td class="cell-actions">
           <a href="/admin/pedidos/{{.ID}}" class="link-action">Ver</a>
         </td>

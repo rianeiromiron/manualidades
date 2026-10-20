@@ -71,6 +71,9 @@ func NewRouter(app *App) http.Handler {
 	pedidosR.HandleFunc("", app.PedidosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/pagos", app.PagosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/{id}", app.PedidoDetalle).Methods(http.MethodGet, http.MethodPost)
+	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/archivo", app.PedidoComprobanteArchivo).Methods(http.MethodGet)
+	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/aprobar", app.PedidoTransferenciaAprobar).Methods(http.MethodPost)
+	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/rechazar", app.PedidoTransferenciaRechazar).Methods(http.MethodPost)
 
 	cuentasR := admin.PathPrefix("/cuentas").Subrouter()
 	cuentasR.Use(app.RequireModule("cuentas"))
@@ -115,6 +118,11 @@ func NewRouter(app *App) http.Handler {
 	r.HandleFunc("/checkout", app.TiendaCheckout).Methods(http.MethodGet)
 	r.HandleFunc("/checkout/confirmar", app.TiendaCheckoutConfirmar).Methods(http.MethodPost)
 	r.HandleFunc("/pedido/{id}/confirmacion", app.TiendaConfirmacion).Methods(http.MethodGet)
+	// Pago por transferencia: el token del enlace es la llave del cliente.
+	r.HandleFunc("/checkout/transferencia", app.TiendaCheckoutTransferencia).Methods(http.MethodPost)
+	r.HandleFunc("/pedido/{token:"+patronToken+"}", app.TiendaPedido).Methods(http.MethodGet)
+	r.HandleFunc("/pedido/{token:"+patronToken+"}/comprobante", app.TiendaComprobante).Methods(http.MethodPost)
+	r.HandleFunc("/consultar-pedido", app.TiendaConsultarPedido).Methods(http.MethodGet, http.MethodPost)
 
 	r.PathPrefix("/static/").Handler(noCache(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static")))))
 	r.PathPrefix("/media/productos/").Handler(http.StripPrefix("/media/productos/", http.FileServer(http.Dir("media/productos"))))

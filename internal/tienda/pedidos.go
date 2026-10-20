@@ -37,6 +37,13 @@ type ItemCarrito struct {
 // pagado entra al kardex y de ahí en adelante solo cambia a mano:
 //
 //	pagado → procesando → entregado  (o cancelado)
+//
+// Formas de pago de un pedido.
+const (
+	MetodoPagoTarjeta       = "tarjeta"
+	MetodoPagoTransferencia = "transferencia"
+)
+
 const (
 	EstadoPendientePago = "pendiente_pago"
 	EstadoPagando       = "pagando"
@@ -82,6 +89,9 @@ type DatosPedido struct {
 	DireccionEntrega string
 	Notas            string
 	Items            []ItemCarrito
+	// CostoEnvio lo fija el servidor según el método de entrega (nunca el
+	// navegador) y ya viene sumado en el total que se pasa a IniciarPago.
+	CostoEnvio float64
 }
 
 type PedidoItem struct {
@@ -103,8 +113,12 @@ type Pedido struct {
 	DireccionEntrega string
 	Notas            string
 	Estado           string
-	Total            float64
-	CreadoEn         time.Time
+	// MetodoPago es "tarjeta" o "transferencia".
+	MetodoPago string
+	// CostoEnvio es lo cobrado por entrega a domicilio y ya está incluido en Total.
+	CostoEnvio float64
+	Total      float64
+	CreadoEn   time.Time
 	// ExpiraEn solo tiene valor mientras el pedido reserva stock
 	// (pendiente_pago / pagando / espera_transferencia); en
 	// transferencia_por_revisar la reserva sigue pero no vence, y vale NULL.
@@ -184,7 +198,7 @@ type ResultadoPago struct {
 func ListPedidos(conn *sql.DB) ([]Pedido, error) {
 	return queryPedidos(conn,
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en, metodo_pago, costo_envio
 		 FROM pedidos WHERE estado = ANY($1) ORDER BY creado_en DESC`,
 		pq.Array(EstadosValidos),
 	)
@@ -195,7 +209,7 @@ func ListPedidos(conn *sql.DB) ([]Pedido, error) {
 func ListPedidosPendientes(conn *sql.DB) ([]Pedido, error) {
 	return queryPedidos(conn,
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en, metodo_pago, costo_envio
 		 FROM pedidos
 		 WHERE `+strings.ReplaceAll(sqlReservaVigente, "pe.", "")+`
 		 ORDER BY creado_en DESC`,
@@ -225,7 +239,7 @@ func scanPedido(row interface{ Scan(dest ...any) error }) (Pedido, error) {
 	var expira sql.NullTime
 	if err := row.Scan(
 		&p.ID, &p.ClienteNombre, &p.ClienteTelefono, &p.ClienteEmail, &p.ClienteNIT,
-		&p.MetodoEntrega, &p.DireccionEntrega, &p.Notas, &p.Estado, &p.Total, &p.CreadoEn, &expira,
+		&p.MetodoEntrega, &p.DireccionEntrega, &p.Notas, &p.Estado, &p.Total, &p.CreadoEn, &expira, &p.MetodoPago, &p.CostoEnvio,
 	); err != nil {
 		return Pedido{}, err
 	}
@@ -238,7 +252,7 @@ func scanPedido(row interface{ Scan(dest ...any) error }) (Pedido, error) {
 func GetPedido(conn *sql.DB, id int) (Pedido, error) {
 	p, err := scanPedido(conn.QueryRow(
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
+			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en, metodo_pago, costo_envio
 		 FROM pedidos WHERE id = $1`,
 		id,
 	))

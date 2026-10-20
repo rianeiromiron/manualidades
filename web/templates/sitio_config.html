@@ -44,6 +44,12 @@
     </label>
 
     <label class="span-2">
+      <span>Costo de envío a domicilio (Q)</span>
+      <input type="number" name="costo_envio" value="{{printf "%.2f" .Config.CostoEnvio}}" min="0" max="9999.99" step="0.01" required>
+      <small class="cell-muted">Se suma al total de los pedidos con entrega a domicilio. Los pedidos ya hechos conservan el costo con que se cobraron.</small>
+    </label>
+
+    <label class="span-2">
       <span>Logotipo</span>
       <input type="file" name="logo" accept="image/*">
     </label>

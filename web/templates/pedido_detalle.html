@@ -18,6 +18,83 @@
   </p>
 </section>
 
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+{{if eq .Pedido.MetodoPago "transferencia"}}
+<section class="panel">
+  <h3>Transferencia bancaria</h3>
+  {{if eq .Pedido.Estado "espera_transferencia"}}
+  <p>Esperando el comprobante del cliente.{{if .Pedido.ExpiraEn}} La reserva vence el {{localtime .Pedido.ExpiraEn "02/01/2006 15:04"}}.{{end}}</p>
+  {{end}}
+  {{if .Comprobantes}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Comprobante</th><th>Boleta</th><th>Banco de origen</th><th>Fecha</th><th>Estado</th><th>Revisión</th></tr>
+    </thead>
+    <tbody>
+      {{range .Comprobantes}}
+      <tr>
+        <td>
+          <a href="/admin/pedidos/{{$.Pedido.ID}}/comprobantes/{{.ID}}/archivo" target="_blank" rel="noopener">
+            <img src="/admin/pedidos/{{$.Pedido.ID}}/comprobantes/{{.ID}}/archivo" alt="Comprobante de la boleta {{.NumeroBoleta}}" class="comprobante-mini">
+          </a>
+        </td>
+        <td class="cell-strong">{{.NumeroBoleta}}</td>
+        <td>{{.BancoOrigen}}</td>
+        <td>{{.Fecha.Format "02/01/2006"}}</td>
+        <td>
+          {{if eq .Estado "aceptado"}}<span class="estado-badge estado-entregado">Aceptado</span>
+          {{else if eq .Estado "rechazado"}}<span class="estado-badge estado-cancelado">Rechazado</span>
+          {{else}}<span class="estado-badge estado-transferencia_por_revisar">Por revisar</span>{{end}}
+        </td>
+        <td>
+          {{if .RevisadoPor}}{{.RevisadoPor}} · {{localtime .RevisadoEn "02/01/2006 15:04"}}{{else}}Subido {{localtime .CreadoEn "02/01/2006 15:04"}}{{end}}
+          {{if .Nota}}<br><span class="cell-muted">Motivo: {{.Nota}}</span>{{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">El cliente todavía no ha subido ningún comprobante.</p>
+  {{end}}
+
+  {{if .PorRevisar}}
+  <div class="revision">
+    <p><strong>Antes de aprobar,</strong> busca en tu banca en línea un depósito de
+      <strong>Q {{printf "%.2f" .Pedido.Total}}</strong> con la boleta <strong>{{.PorRevisar.NumeroBoleta}}</strong>
+      ({{.PorRevisar.BancoOrigen}}, {{.PorRevisar.Fecha.Format "02/01/2006"}}). La imagen sola no prueba el pago.</p>
+
+    <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/comprobantes/{{.PorRevisar.ID}}/aprobar"
+          data-confirm="¿Confirmas que el depósito de Q {{printf "%.2f" .Pedido.Total}} aparece en tu cuenta? Se descontará el inventario y el pedido quedará pagado.">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-primary">Aprobar transferencia</button>
+    </form>
+
+    <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/comprobantes/{{.PorRevisar.ID}}/rechazar" class="form-grid revision-rechazo">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label class="span-2">
+        <span>Motivo del rechazo (lo verá el cliente)</span>
+        <input type="text" name="motivo" maxlength="255" placeholder="Ej. No encontramos el depósito con esa boleta" required>
+      </label>
+      <label class="span-2">
+        <span>¿Qué pasa con el pedido?</span>
+        <select name="accion">
+          <option value="reintentar">Pedir otro comprobante (nuevo plazo de 48 horas)</option>
+          <option value="cancelar">Cancelar el pedido y liberar el inventario</option>
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-ghost">Rechazar comprobante</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
 {{if .Pedido.EsReal}}
 <section class="panel panel-narrow">
   <h3>Cambiar estado</h3>
@@ -71,7 +148,7 @@
     <span class="estado-badge {{if eq .Pago.Estado "aprobado"}}estado-entregado{{else}}estado-cancelado{{end}}">
       {{if eq .Pago.Estado "aprobado"}}Aprobado{{else if eq .Pago.Estado "por_conciliar"}}Por conciliar{{else if eq .Pago.Estado "iniciado"}}En curso{{else if eq .Pago.Estado "fallo"}}Falla del proveedor{{else}}Rechazado{{end}}
     </span>
-    · {{if eq .Pago.Metodo "tarjeta"}}Tarjeta{{else}}{{.Pago.Metodo}}{{end}}
+    · {{if eq .Pago.Metodo "tarjeta"}}Tarjeta{{else if eq .Pago.Metodo "transferencia"}}Transferencia{{else}}{{.Pago.Metodo}}{{end}}
     {{if .Pago.TarjetaUltimos4}} terminada en {{.Pago.TarjetaUltimos4}}{{end}}
   </p>
   <p>Monto: Q {{printf "%.2f" .Pago.Monto}} · Referencia: {{.Pago.Referencia}}<br>
@@ -99,6 +176,12 @@
 </section>
 
 <section class="report-stats">
+  {{if gt .Pedido.CostoEnvio 0.0}}
+  <div class="stat-card">
+    <span class="stat-label">Envío a domicilio</span>
+    <span class="stat-value">Q {{printf "%.2f" .Pedido.CostoEnvio}}</span>
+  </div>
+  {{end}}
   <div class="stat-card">
     <span class="stat-label">Total del pedido</span>
     <span class="stat-value">Q {{printf "%.2f" .Pedido.Total}}</span>

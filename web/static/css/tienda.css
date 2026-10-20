@@ -383,7 +383,7 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
 }
 
 /* ---- Paginación del catálogo ---- */
-.t-resumen { text-align: center; color: var(--t-texto-suave); font-size: 0.9rem; margin: -14px 0 22px; }
+.t-catalogo-resumen { text-align: center; color: var(--t-texto-suave); font-size: 0.9rem; margin: -14px 0 22px; }
 .t-filtro-aplicar { margin-top: 10px; }
 .t-filtro-limpiar { display: block; text-align: center; margin-top: 6px; text-decoration: none; }
 .t-paginacion {
@@ -399,3 +399,32 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
 a.t-pag-num:hover { background: var(--t-acento-suave); }
 .t-pag-actual { background: var(--t-acento); border-color: var(--t-acento); color: #fff; font-weight: 700; }
 .t-pag-puntos { border: none; background: none; min-width: 20px; padding: 0; }
+
+/* ---- Pago por transferencia ---- */
+#tTarjetaCampos { display: contents; }
+#tTarjetaCampos[hidden] { display: none; }
+.t-forma-pago { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; }
+.t-forma-pago h3 { margin: 0; flex-basis: 100%; }
+.t-forma-pago label { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 600; }
+.t-transferencia-info { background: var(--t-acento-suave); border-radius: var(--t-radius); padding: 12px 16px; font-size: 0.92rem; }
+.t-transferencia-info p { margin: 0; }
+.t-hero-compacto { padding-top: 10px; }
+.t-aviso { max-width: 760px; margin: 0 auto 20px; }
+.t-pedido-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: start; }
+.t-paso { margin-bottom: 26px; }
+.t-paso h3 { margin: 0 0 10px; }
+.t-cuenta {
+  background: var(--t-card); border: 1px solid var(--t-marco-suave); border-radius: var(--t-radius);
+  padding: 14px 18px; margin: 10px 0;
+}
+.t-cuenta p { margin: 2px 0; }
+.t-cuenta-banco { font-weight: 700; font-size: 1.05rem; }
+.t-cuenta-numero { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.04em; word-break: break-all; }
+.t-cuenta-nota, .t-plazo, .t-ayuda { color: var(--t-texto-suave); font-size: 0.9rem; }
+.t-resumen-linea { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+.t-comprobante { margin: 4px 0; font-size: 0.92rem; }
+.t-form-angosto { max-width: 460px; margin: 0 auto; }
+@media (max-width: 760px) {
+  .t-pedido-grid { grid-template-columns: 1fr; }
+}
+.t-resumen-linea[hidden] { display: none; }

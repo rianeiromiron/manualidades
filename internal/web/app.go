@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"manualidades/internal/correo"
 	"manualidades/internal/storage"
 )
 
@@ -51,6 +52,12 @@ type App struct {
 	conn        *sql.DB
 	Storage     storage.Storage
 	LogoStorage storage.Storage
+	// Comprobantes guarda las imágenes de las transferencias. Si es nil se crea,
+	// al primer uso, la carpeta comprobantes/ (nunca servida al público).
+	Comprobantes storage.Storage
+	// EnviarCorreo manda un correo. Si es nil se usa correo.Enviar; las pruebas
+	// lo reemplazan para no depender de un servidor SMTP.
+	EnviarCorreo func(correo.Config, correo.Mensaje) error
 }
 
 func (a *App) DB() *sql.DB {

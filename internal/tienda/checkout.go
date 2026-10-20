@@ -197,11 +197,11 @@ func IniciarPago(conn *sql.DB, token string, datos DatosPedido, lineas []LineaPe
 		err = tx.QueryRow(
 			`INSERT INTO pedidos
 				(cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
-				 metodo_entrega, direccion_entrega, notas, total, estado, expira_en, token)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, `+sqlExpiraPagando+`, $10)
+				 metodo_entrega, direccion_entrega, notas, total, estado, expira_en, token, costo_envio)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, `+sqlExpiraPagando+`, $10, $11)
 			 RETURNING id`,
 			datos.ClienteNombre, datos.ClienteTelefono, datos.ClienteEmail, nit,
-			datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoPagando, token,
+			datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoPagando, token, datos.CostoEnvio,
 		).Scan(&pedidoID)
 		if err != nil {
 			return Intento{}, err
@@ -210,10 +210,10 @@ func IniciarPago(conn *sql.DB, token string, datos DatosPedido, lineas []LineaPe
 		if _, err := tx.Exec(
 			`UPDATE pedidos SET cliente_nombre = $1, cliente_telefono = $2, cliente_email = $3, cliente_nit = $4,
 				metodo_entrega = $5, direccion_entrega = $6, notas = $7, total = $8,
-				estado = $9, expira_en = `+sqlExpiraPagando+`
-			 WHERE id = $10`,
+				estado = $9, expira_en = `+sqlExpiraPagando+`, costo_envio = $10
+			 WHERE id = $11`,
 			datos.ClienteNombre, datos.ClienteTelefono, datos.ClienteEmail, nit,
-			datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoPagando, pedidoID,
+			datos.MetodoEntrega, datos.DireccionEntrega, datos.Notas, total, EstadoPagando, datos.CostoEnvio, pedidoID,
 		); err != nil {
 			return Intento{}, err
 		}

@@ -1,0 +1,24 @@
+{{define "content"}}
+<section class="t-hero t-hero-compacto">
+  <h1>Consultar mi pedido</h1>
+  <p>Escribe tu número de pedido y el correo que usaste al hacerlo. Te enviaremos de nuevo el enlace a ese correo.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}} t-aviso">{{.Message}}</div>
+{{end}}
+
+<form method="post" action="/consultar-pedido" class="t-form-grid t-form-angosto">
+  <label class="span-2">
+    <span>Número de pedido</span>
+    <input type="text" name="numero" inputmode="numeric" maxlength="12" required>
+  </label>
+  <label class="span-2">
+    <span>Correo</span>
+    <input type="email" name="correo" maxlength="254" autocomplete="email" required>
+  </label>
+  <div class="span-2">
+    <button type="submit" class="t-btn t-btn-primary t-btn-block">Enviarme el enlace</button>
+  </div>
+</form>
+{{end}}

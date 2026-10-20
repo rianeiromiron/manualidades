@@ -936,3 +936,9 @@ code {
 }
 
 .cell-detalle { white-space: pre-line; }
+
+/* ---- Revisión de transferencias ---- */
+.comprobante-mini { display: block; max-width: 120px; max-height: 90px; border: 1px solid var(--line, #d8cfc4); border-radius: 4px; }
+.revision { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line, #d8cfc4); display: grid; gap: 14px; }
+.revision form { margin: 0; }
+.revision-rechazo { max-width: 560px; }

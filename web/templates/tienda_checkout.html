@@ -19,7 +19,7 @@
       <input type="text" name="cliente_telefono" required>
     </label>
     <label>
-      <span>Email (opcional)</span>
+      <span id="tEmailEtiqueta">Email (opcional)</span>
       <input type="email" name="cliente_email">
     </label>
     <label>
@@ -42,6 +42,19 @@
       <textarea name="notas" rows="2"></textarea>
     </label>
 
+    {{if .HayTransferencia}}
+    <div class="span-2 t-forma-pago">
+      <h3>Forma de pago</h3>
+      <label><input type="radio" name="metodo_pago" value="tarjeta" checked> Tarjeta de crédito</label>
+      <label><input type="radio" name="metodo_pago" value="transferencia"> Transferencia bancaria</label>
+    </div>
+    <div class="span-2 t-transferencia-info" id="tTransferenciaInfo" hidden>
+      <p>Al continuar verás las cuentas para transferir y podrás subir tu comprobante, ahora o más tarde.
+        Te enviaremos un enlace a tu correo para volver a tu pedido. Guardamos tus productos por 48 horas.</p>
+    </div>
+    {{end}}
+
+    <div id="tTarjetaCampos">
     <div class="span-2" style="margin-top:8px;">
       <h3 style="margin:0 0 4px;">Datos de tarjeta</h3>
       <p style="margin:0 0 12px; opacity:0.7; font-size:0.9rem;">Pago simulado — no se procesa ningún cobro real.</p>
@@ -62,6 +75,7 @@
       <span>CVV</span>
       <input type="text" name="tarjeta_cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" required>
     </label>
+    </div>
 
     <div id="tCheckoutError" class="alert alert-error" hidden style="grid-column:span 2;"></div>
 
@@ -78,6 +92,10 @@
       </thead>
       <tbody id="tResumenLineas"></tbody>
     </table>
+    <p class="t-resumen-linea" id="tResumenEnvio" data-costo="{{printf "%.2f" .Sitio.CostoEnvio}}" hidden>
+      <span>Envío a domicilio</span>
+      <span id="tResumenEnvioMonto"></span>
+    </p>
     <div class="t-resumen-total">
       <span>Total</span>
       <span id="tResumenTotal">Q 0.00</span>

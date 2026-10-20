@@ -74,6 +74,37 @@ ALTER TABLE pedidos ALTER COLUMN estado TYPE VARCHAR(30);
 DROP INDEX IF EXISTS idx_pedidos_reserva;
 CREATE INDEX IF NOT EXISTS idx_pedidos_reserva_v2 ON pedidos(estado, expira_en)
 	WHERE estado IN ('pendiente_pago', 'pagando', 'espera_transferencia', 'transferencia_por_revisar');
+-- Cómo paga el pedido. Los anteriores a la transferencia son de tarjeta.
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(20) NOT NULL DEFAULT 'tarjeta';
+-- Lo que se cobró de envío a domicilio. Es una copia del costo vigente al hacer el
+-- pedido (ya incluido en total): cambiar el costo después no altera pedidos hechos.
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS costo_envio NUMERIC(12,2) NOT NULL DEFAULT 0;
+-- Para limitar pedidos abiertos por correo.
+CREATE INDEX IF NOT EXISTS idx_pedidos_email ON pedidos(lower(cliente_email)) WHERE cliente_email <> '';
+`
+
+// schemaComprobantes guarda los comprobantes de transferencia que suben los
+// clientes. El archivo vive fuera de media/ (que es público): solo el admin lo
+// descarga. El índice único impide usar la misma boleta de un banco en dos
+// pedidos (salvo que el comprobante se haya rechazado).
+const schemaComprobantes = `
+CREATE TABLE IF NOT EXISTS comprobantes (
+	id                  SERIAL PRIMARY KEY,
+	pedido_id           INTEGER      NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+	archivo             VARCHAR(80)  NOT NULL,
+	numero_boleta       VARCHAR(40)  NOT NULL,
+	banco_origen        VARCHAR(100) NOT NULL,
+	fecha_transferencia DATE         NOT NULL,
+	estado              VARCHAR(20)  NOT NULL DEFAULT 'por_revisar'
+		CHECK (estado IN ('por_revisar', 'aceptado', 'rechazado')),
+	nota                VARCHAR(255) NOT NULL DEFAULT '',
+	revisado_por        VARCHAR(50)  NOT NULL DEFAULT '',
+	revisado_en         TIMESTAMPTZ,
+	creado_en           TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_pedido ON comprobantes(pedido_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_comprobantes_boleta
+	ON comprobantes (lower(banco_origen), lower(numero_boleta)) WHERE estado <> 'rechazado';
 `
 
 // Migrate crea las tablas de pedidos si todavía no existen, y actualiza el
@@ -88,6 +119,9 @@ func Migrate(conn *sql.DB) error {
 	}
 	if _, err := conn.Exec(alterPedidos); err != nil {
 		return fmt.Errorf("actualizando esquema de pedidos: %w", err)
+	}
+	if _, err := conn.Exec(schemaComprobantes); err != nil {
+		return fmt.Errorf("migrando esquema de comprobantes: %w", err)
 	}
 	return nil
 }

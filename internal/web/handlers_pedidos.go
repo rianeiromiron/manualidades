@@ -27,11 +27,18 @@ func (a *App) PedidosList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	porRevisar := 0
+	for _, p := range pendientes {
+		if p.Estado == tienda.EstadoTransferenciaPorRevisar {
+			porRevisar++
+		}
+	}
 	render(w, r, "pedidos_list.html", map[string]any{
 		"Title":      "Pedidos",
 		"Active":     "pedidos",
 		"Pedidos":    pedidos,
 		"Pendientes": pendientes,
+		"PorRevisar": porRevisar,
 	})
 }
 
@@ -79,20 +86,9 @@ func (a *App) PedidoDetalle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pedido, err := tienda.GetPedido(conn, id)
-	if err != nil {
-		http.NotFound(w, r)
-		return
+	msg, kind := "", ""
+	if m, ok := mensajesRevision[r.URL.Query().Get("r")]; ok {
+		msg, kind = m, "success"
 	}
-	var pago *tienda.Pago
-	if p, err := tienda.GetPagoPorPedido(conn, id); err == nil {
-		pago = &p
-	}
-	render(w, r, "pedido_detalle.html", map[string]any{
-		"Title":          "Pedido",
-		"Active":         "pedidos",
-		"Pedido":         pedido,
-		"EstadosValidos": tienda.EstadosValidos,
-		"Pago":           pago,
-	})
+	a.renderPedidoDetalle(w, r, conn, id, msg, kind, http.StatusOK)
 }

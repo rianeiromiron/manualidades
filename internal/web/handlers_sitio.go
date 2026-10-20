@@ -3,6 +3,8 @@ package web
 import (
 	"database/sql"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"manualidades/internal/sitio"
 )
@@ -37,6 +39,22 @@ func (a *App) SitioConfig(w http.ResponseWriter, r *http.Request) {
 		ColorTexto:     r.FormValue("color_texto"),
 		ColorMarco:     r.FormValue("color_marco"),
 		ColorAcento:    r.FormValue("color_acento"),
+	}
+
+	// El costo de envío: si el formulario no lo trae, se conserva el actual.
+	actual, err := sitio.Get(conn)
+	if err != nil {
+		a.renderSitioConfig(w, r, conn, "No se pudo leer la configuración actual.", "error")
+		return
+	}
+	cfg.CostoEnvio = actual.CostoEnvio
+	if v := strings.TrimSpace(r.FormValue("costo_envio")); v != "" {
+		costo, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64)
+		if err != nil {
+			a.renderSitioConfig(w, r, conn, "El costo de envío no es un monto válido.", "error")
+			return
+		}
+		cfg.CostoEnvio = costo
 	}
 
 	if err := sitio.Save(conn, cfg); err != nil {

@@ -27,7 +27,17 @@
     tr.appendChild(tdSubtotal);
     lineasEl.appendChild(tr);
   });
-  document.getElementById('tResumenTotal').textContent = 'Q ' + Carrito.totalPrecio(items).toFixed(2);
+  // El envío a domicilio se suma al total que se muestra. Es solo informativo:
+  // el servidor calcula siempre el monto real que se cobra.
+  var envioRow = document.getElementById('tResumenEnvio');
+  var costoEnvio = parseFloat(envioRow.getAttribute('data-costo')) || 0;
+  function actualizarTotal(domicilio) {
+    var envio = domicilio && costoEnvio > 0 ? costoEnvio : 0;
+    envioRow.hidden = envio === 0;
+    document.getElementById('tResumenEnvioMonto').textContent = 'Q ' + envio.toFixed(2);
+    document.getElementById('tResumenTotal').textContent = 'Q ' + (Carrito.totalPrecio(items) + envio).toFixed(2);
+  }
+  actualizarTotal(false);
 
   var radios = document.querySelectorAll('input[name="metodo_entrega"]');
   var direccionRow = document.getElementById('tDireccionRow');
@@ -36,6 +46,7 @@
     var domicilio = document.querySelector('input[name="metodo_entrega"]:checked').value === 'domicilio';
     direccionRow.hidden = !domicilio;
     direccionInput.required = domicilio;
+    actualizarTotal(domicilio);
   }
   radios.forEach(function (r) { r.addEventListener('change', syncEntrega); });
   syncEntrega();
@@ -44,12 +55,39 @@
   var errorBox = document.getElementById('tCheckoutError');
   var btn = document.getElementById('tPagarBtn');
 
+  // Forma de pago: tarjeta o transferencia (solo si la tienda tiene cuentas).
+  var tarjetaCampos = document.getElementById('tTarjetaCampos');
+  var transfInfo = document.getElementById('tTransferenciaInfo');
+  var emailInput = form.querySelector('input[name="cliente_email"]');
+  var emailEtiqueta = document.getElementById('tEmailEtiqueta');
+  function esTransferencia() {
+    var c = document.querySelector('input[name="metodo_pago"]:checked');
+    return !!c && c.value === 'transferencia';
+  }
+  function etiquetaBoton() {
+    return esTransferencia() ? 'Continuar con la transferencia' : 'Pagar';
+  }
+  function syncPago() {
+    var transf = esTransferencia();
+    tarjetaCampos.hidden = transf;
+    Array.prototype.forEach.call(tarjetaCampos.querySelectorAll('input'), function (i) { i.required = !transf; });
+    if (transfInfo) transfInfo.hidden = !transf;
+    emailInput.required = transf;
+    emailEtiqueta.textContent = transf ? 'Email (obligatorio: ahí te enviamos el enlace de tu pedido)' : 'Email (opcional)';
+    btn.textContent = etiquetaBoton();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="metodo_pago"]'), function (r) {
+    r.addEventListener('change', syncPago);
+  });
+  syncPago();
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     errorBox.hidden = true;
     btn.disabled = true;
     btn.textContent = 'Procesando…';
 
+    var transf = esTransferencia();
     var fd = new FormData(form);
     var payload = {
       cliente_nombre: fd.get('cliente_nombre'),
@@ -59,16 +97,16 @@
       metodo_entrega: fd.get('metodo_entrega'),
       direccion_entrega: fd.get('direccion_entrega') || '',
       notas: fd.get('notas') || '',
-      tarjeta_numero: fd.get('tarjeta_numero'),
-      tarjeta_titular: fd.get('tarjeta_titular'),
-      tarjeta_expiracion: fd.get('tarjeta_expiracion'),
-      tarjeta_cvv: fd.get('tarjeta_cvv'),
+      tarjeta_numero: transf ? '' : fd.get('tarjeta_numero'),
+      tarjeta_titular: transf ? '' : fd.get('tarjeta_titular'),
+      tarjeta_expiracion: transf ? '' : fd.get('tarjeta_expiracion'),
+      tarjeta_cvv: transf ? '' : fd.get('tarjeta_cvv'),
       items: Carrito.obtener().map(function (i) {
         return { producto_id: i.productoId, cantidad: i.cantidad };
       })
     };
 
-    fetch('/checkout/confirmar', {
+    fetch(transf ? '/checkout/transferencia' : '/checkout/confirmar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -77,19 +115,24 @@
       .then(function (res) {
         if (res.data.ok) {
           Carrito.vaciar();
-          window.location.href = '/pedido/' + res.data.pedido_id + '/confirmacion';
+          // El pedido por transferencia lleva a su página privada; solo se
+          // acepta una ruta propia (/pedido/...), nunca otra dirección.
+          var destino = transf && typeof res.data.redirect === 'string' && res.data.redirect.indexOf('/pedido/') === 0
+            ? res.data.redirect
+            : '/pedido/' + res.data.pedido_id + '/confirmacion';
+          window.location.href = destino;
         } else {
           errorBox.textContent = res.data.error || 'No se pudo procesar el pedido.';
           errorBox.hidden = false;
           btn.disabled = false;
-          btn.textContent = 'Pagar';
+          btn.textContent = etiquetaBoton();
         }
       })
       .catch(function () {
         errorBox.textContent = 'No se pudo conectar con el servidor.';
         errorBox.hidden = false;
         btn.disabled = false;
-        btn.textContent = 'Pagar';
+        btn.textContent = etiquetaBoton();
       });
   });
 })();

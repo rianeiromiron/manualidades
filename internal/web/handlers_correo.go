@@ -32,6 +32,7 @@ type formCorreo struct {
 	DesdeNombre   string
 	DesdeCorreo   string
 	Destinatarios string
+	UrlTienda     string
 	TienePassword bool
 }
 
@@ -39,7 +40,7 @@ func formDe(c correo.Config) formCorreo {
 	return formCorreo{
 		Servidor: c.Servidor, Puerto: c.Puerto, Seguridad: c.Seguridad, Usuario: c.Usuario,
 		DesdeNombre: c.DesdeNombre, DesdeCorreo: c.DesdeCorreo,
-		Destinatarios: strings.Join(c.Destinatarios, "\n"), TienePassword: c.Password != "",
+		Destinatarios: strings.Join(c.Destinatarios, "\n"), UrlTienda: c.UrlTienda, TienePassword: c.Password != "",
 	}
 }
 
@@ -83,6 +84,7 @@ func (a *App) CorreoGuardar(w http.ResponseWriter, r *http.Request) {
 		Servidor: r.FormValue("servidor"), Puerto: puerto, Seguridad: r.FormValue("seguridad"),
 		Usuario: r.FormValue("usuario"), DesdeNombre: r.FormValue("desde_nombre"),
 		DesdeCorreo: r.FormValue("desde_correo"), Destinatarios: r.FormValue("destinatarios"),
+		UrlTienda: r.FormValue("url_tienda"),
 	}
 	previa, _ := correo.Load()
 	enviado.TienePassword = previa.Password != ""
@@ -93,7 +95,7 @@ func (a *App) CorreoGuardar(w http.ResponseWriter, r *http.Request) {
 			Servidor: enviado.Servidor, Puerto: enviado.Puerto, Seguridad: enviado.Seguridad,
 			Usuario: enviado.Usuario, Password: r.FormValue("password"),
 			DesdeNombre: enviado.DesdeNombre, DesdeCorreo: enviado.DesdeCorreo,
-			Destinatarios: destinatarios,
+			Destinatarios: destinatarios, UrlTienda: enviado.UrlTienda,
 		})
 	}
 	if err != nil {

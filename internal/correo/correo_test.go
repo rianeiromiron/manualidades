@@ -325,3 +325,39 @@ func TestGuardarInvalidoNoTocaElArchivo(t *testing.T) {
 		t.Fatalf("puerto = %d, quiero 587", g.Puerto)
 	}
 }
+
+func TestLimpiarUrlTienda(t *testing.T) {
+	buenos := map[string]string{
+		"":                                       "",
+		"  ":                                     "",
+		"https://tienda.ejemplo.com":             "https://tienda.ejemplo.com",
+		"https://tienda.ejemplo.com/":            "https://tienda.ejemplo.com",
+		"https://prueba.manualidadescristal.com": "https://prueba.manualidadescristal.com",
+		"https://tienda.ejemplo.com:8443":        "https://tienda.ejemplo.com:8443",
+		"http://localhost:8090":                  "http://localhost:8090",
+		"http://127.0.0.1:8090/":                 "http://127.0.0.1:8090",
+	}
+	for entrada, quiero := range buenos {
+		if got, err := LimpiarUrlTienda(entrada); err != nil || got != quiero {
+			t.Errorf("%q → (%q, %v), quiero %q", entrada, got, err, quiero)
+		}
+	}
+	malos := []string{
+		"http://tienda.ejemplo.com", // sin cifrado fuera de localhost
+		"ftp://tienda.ejemplo.com",
+		"tienda.ejemplo.com", // sin esquema
+		"https://",
+		"https://tienda.ejemplo.com/ruta",
+		"https://tienda.ejemplo.com?x=1",
+		"https://tienda.ejemplo.com/#frag",
+		"https://usuario:clave@tienda.ejemplo.com",
+		"https://tienda ejemplo.com",
+		"https://tienda.ejemplo.com\r\nBcc: x@y.z",
+		"javascript:alert(1)",
+	}
+	for _, m := range malos {
+		if got, err := LimpiarUrlTienda(m); !errors.Is(err, ErrValidacion) {
+			t.Errorf("%q → (%q, %v), quiero ErrValidacion", m, got, err)
+		}
+	}
+}

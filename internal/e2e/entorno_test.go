@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"manualidades/internal/config"
+	"manualidades/internal/cuentas"
 	"manualidades/internal/db"
 	"manualidades/internal/inventario"
 	"manualidades/internal/sesiones"
@@ -131,7 +132,7 @@ func nuevoEntorno(t *testing.T, conBD bool) *entorno {
 			t.Fatal(err)
 		}
 		for _, migrar := range []func(*sql.DB) error{
-			inventario.Migrate, sitio.Migrate, tienda.Migrate, usuarios.Migrate, sesiones.Migrate,
+			inventario.Migrate, sitio.Migrate, tienda.Migrate, usuarios.Migrate, sesiones.Migrate, cuentas.Migrate,
 		} {
 			if err := migrar(conn); err != nil {
 				t.Fatal(err)

@@ -1,0 +1,124 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Tienda</p>
+  <h1>Cuentas bancarias</h1>
+  <p class="lead">Cuentas a las que los clientes pueden hacer transferencias. Solo se
+    ofrecen las que estén activas. Cada cambio queda registrado abajo.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel">
+  {{if .Cuentas}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Banco</th><th>Cuenta</th><th>Titular</th><th>Moneda</th><th>Orden</th><th>Estado</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Cuentas}}
+      <tr>
+        <td class="cell-strong">{{.Banco}}</td>
+        <td>{{.TipoNombre}} · {{.Numero}}</td>
+        <td>{{.Titular}}</td>
+        <td>{{.Moneda}}</td>
+        <td>{{.Orden}}</td>
+        <td>
+          {{if .Activa}}<span class="estado-badge estado-entregado">Activa</span>
+          {{else}}<span class="estado-badge estado-cancelado">Inactiva</span>{{end}}
+        </td>
+        <td class="cell-actions">
+          <a href="/admin/cuentas/{{.ID}}/editar" class="link-action">Editar</a>
+          {{if .Activa}}
+          <form method="post" action="/admin/cuentas/{{.ID}}/desactivar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action">Desactivar</button>
+          </form>
+          {{else}}
+          <form method="post" action="/admin/cuentas/{{.ID}}/activar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action">Activar</button>
+          </form>
+          {{end}}
+          <form method="post" action="/admin/cuentas/{{.ID}}/eliminar"
+                data-confirm="¿Eliminar la cuenta {{.Banco}} {{.Numero}}? Esto no se puede deshacer.">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action link-danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay cuentas. Mientras no haya ninguna activa, la tienda no ofrecerá pagar por transferencia.</p>
+  {{end}}
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Nueva cuenta</h3>
+  <form method="post" action="/admin/cuentas" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="span-2">
+      <span>Banco</span>
+      <input type="text" name="banco" value="{{.Form.Banco}}" maxlength="100" placeholder="Ej. Banco Industrial" required>
+    </label>
+    <label>
+      <span>Tipo de cuenta</span>
+      <select name="tipo_cuenta">
+        {{range .Tipos}}<option value="{{.Valor}}" {{if eq .Valor $.Form.TipoCuenta}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    <label>
+      <span>Moneda</span>
+      <select name="moneda">
+        {{range .Monedas}}<option value="{{.Valor}}" {{if eq .Valor $.Form.Moneda}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    <label class="span-2">
+      <span>Número de cuenta</span>
+      <input type="text" name="numero" value="{{.Form.Numero}}" maxlength="40" required>
+    </label>
+    <label class="span-2">
+      <span>Nombre del titular</span>
+      <input type="text" name="titular" value="{{.Form.Titular}}" maxlength="150" required>
+    </label>
+    <label class="span-2">
+      <span>Instrucciones para el cliente</span>
+      <input type="text" name="instrucciones" value="{{.Form.Instrucciones}}" maxlength="300" placeholder="Opcional. Ej. Indica el número de pedido en la boleta.">
+    </label>
+    <label>
+      <span>Orden</span>
+      <input type="number" name="orden" value="{{.Form.Orden}}" min="0" max="9999">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Crear cuenta</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <h3>Historial de cambios</h3>
+  {{if .Historial}}
+  <table class="data-table">
+    <thead>
+      <tr><th>Fecha</th><th>Acción</th><th>Usuario</th><th>Desde</th><th>Detalle</th></tr>
+    </thead>
+    <tbody>
+      {{range .Historial}}
+      <tr>
+        <td>{{localtime .Fecha "02/01/2006 15:04"}}</td>
+        <td>{{.Accion}}</td>
+        <td>{{.Usuario}}</td>
+        <td>{{.IP}}</td>
+        <td class="cell-detalle">{{.Detalle}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty-hint">Todavía no hay cambios registrados.</p>
+  {{end}}
+</section>
+{{end}}

@@ -37,6 +37,12 @@
       {{if index .ModulosVisibles "pedidos"}}
       <a href="/admin/pedidos" class="{{if eq .Active "pedidos"}}active{{end}}">Pedidos</a>
       {{end}}
+      {{if index .ModulosVisibles "cuentas"}}
+      <a href="/admin/cuentas" class="{{if eq .Active "cuentas"}}active{{end}}" title="Cuentas bancarias">Bancos</a>
+      {{end}}
+      {{if index .ModulosVisibles "correo"}}
+      <a href="/admin/correo" class="{{if eq .Active "correo"}}active{{end}}" title="Correo saliente">Correo</a>
+      {{end}}
       {{if index .ModulosVisibles "reportes"}}
       <a href="/admin/reportes" class="{{if eq .Active "reportes"}}active{{end}}">Reportes</a>
       {{end}}

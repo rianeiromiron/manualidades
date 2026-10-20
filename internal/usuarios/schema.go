@@ -18,7 +18,9 @@ INSERT INTO modulos (clave, nombre, orden) VALUES
 	('inventario', 'Inventario', 2),
 	('sitio', 'Sitio web', 3),
 	('pedidos', 'Pedidos', 4),
-	('reportes', 'Reportes', 5)
+	('reportes', 'Reportes', 5),
+	('cuentas', 'Cuentas bancarias', 6),
+	('correo', 'Correo saliente', 7)
 ON CONFLICT (clave) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS usuarios (

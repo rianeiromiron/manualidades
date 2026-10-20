@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"manualidades/internal/config"
+	"manualidades/internal/cuentas"
 	"manualidades/internal/db"
 	"manualidades/internal/inventario"
 	"manualidades/internal/sitio"
@@ -106,6 +107,10 @@ func (a *App) reconnect(cfg config.DBConfig) {
 		return
 	}
 	if err := sesiones.Migrate(conn); err != nil {
+		conn.Close()
+		return
+	}
+	if err := cuentas.Migrate(conn); err != nil {
 		conn.Close()
 		return
 	}

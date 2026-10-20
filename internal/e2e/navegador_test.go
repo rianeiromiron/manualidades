@@ -403,7 +403,7 @@ func TestNavegadorTiendaFuncionaConLaCSP(t *testing.T) {
 		`Array.from(document.querySelectorAll('.t-cat-checkbox')).every(c => c.checked) && document.getElementById('tFiltroCount').textContent === ''`)
 	n.correr(t, chromedp.Click(`#tFiltroPanel button[type="submit"]`))
 	n.espera(t, "«aplicar» recarga el catálogo con el servidor",
-		`document.querySelectorAll('#tGrid .t-card').length === 1`)
+		`location.search.indexOf('cat=') !== -1 && document.readyState === 'complete' && document.querySelectorAll('#tGrid .t-card').length === 1`)
 
 	n.correr(t, chromedp.Click(`.t-agregar`))
 	n.espera(t, "agregar desde el inicio guarda en el carrito",

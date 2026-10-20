@@ -1,0 +1,89 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Tienda</p>
+  <h1>Correo saliente</h1>
+  <p class="lead">Servidor con el que la tienda envía correos (avisos de transferencias, confirmaciones a
+    clientes). La conexión siempre va cifrada. La contraseña se guarda solo en el servidor y nunca se muestra aquí.</p>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow">
+  <p>Estado:
+    {{if .Configurado}}<span class="estado-badge estado-entregado">Configurado</span>
+    {{else}}<span class="estado-badge estado-cancelado">Sin configurar</span>{{end}}
+  </p>
+
+  <form method="post" action="/admin/correo" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="span-2">
+      <span>Servidor SMTP</span>
+      <input type="text" name="servidor" value="{{.Form.Servidor}}" maxlength="253" placeholder="smtp.gmail.com" required>
+    </label>
+    <label>
+      <span>Puerto</span>
+      <input type="number" name="puerto" value="{{.Form.Puerto}}" min="1" max="65535" required>
+    </label>
+    <label>
+      <span>Seguridad</span>
+      <select name="seguridad">
+        {{range .Seguridades}}<option value="{{.Valor}}" {{if eq .Valor $.Form.Seguridad}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    <label class="span-2">
+      <span>Usuario</span>
+      <input type="text" name="usuario" value="{{.Form.Usuario}}" maxlength="254" autocomplete="off" placeholder="Normalmente, la dirección de correo completa">
+    </label>
+    <label class="span-2">
+      <span>Contraseña {{if .Form.TienePassword}}(ya hay una guardada; déjala en blanco para conservarla){{end}}</span>
+      <input type="password" name="password" maxlength="200" autocomplete="new-password"
+             placeholder="{{if .Form.TienePassword}}••••••••••••••••{{else}}Contraseña o contraseña de aplicación{{end}}">
+    </label>
+    <label class="span-2">
+      <span>Nombre del remitente</span>
+      <input type="text" name="desde_nombre" value="{{.Form.DesdeNombre}}" maxlength="100" placeholder="Manualidades Cristal">
+    </label>
+    <label class="span-2">
+      <span>Correo del remitente</span>
+      <input type="email" name="desde_correo" value="{{.Form.DesdeCorreo}}" maxlength="254" required>
+    </label>
+    <label class="span-2">
+      <span>Correos que reciben los avisos de la tienda (uno por línea, máximo {{.MaxAvisos}})</span>
+      <textarea name="destinatarios" rows="3" placeholder="dueña@ejemplo.com">{{.Form.Destinatarios}}</textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Probar</h3>
+  <p>Envía un correo de prueba a los correos de aviso (o al remitente si no hay ninguno). Guarda los cambios
+    antes de probar. Se puede enviar una prueba cada {{.EsperaPrueba}} segundos.</p>
+  <form method="post" action="/admin/correo/probar">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn btn-ghost">Enviar correo de prueba</button>
+  </form>
+</section>
+
+<section class="panel panel-narrow">
+  <details>
+    <summary><strong>Cómo usar una cuenta de Gmail</strong></summary>
+    <ol>
+      <li>En la cuenta de Google activa la <strong>verificación en dos pasos</strong>
+        (myaccount.google.com → Seguridad).</li>
+      <li>Entra a <strong>myaccount.google.com/apppasswords</strong>, crea una contraseña de aplicación
+        (por ejemplo con el nombre «Manualidades») y copia las 16 letras que muestra Google.</li>
+      <li>Aquí: servidor <code>smtp.gmail.com</code>, puerto <code>587</code>, seguridad STARTTLS.</li>
+      <li>Usuario y correo del remitente: la dirección de Gmail completa. Gmail reemplaza el remitente por la
+        propia cuenta, así que no pongas otra dirección.</li>
+      <li>Contraseña: pega la contraseña de aplicación (los espacios se ignoran). No uses la contraseña normal
+        de la cuenta.</li>
+      <li>Guarda y pulsa «Enviar correo de prueba». Gmail permite unos 500 correos al día.</li>
+    </ol>
+  </details>
+</section>
+{{end}}

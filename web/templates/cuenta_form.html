@@ -1,0 +1,52 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="eyebrow">Cuentas bancarias</p>
+  <h1>Editar cuenta bancaria</h1>
+</section>
+
+{{if .Message}}
+<div class="alert alert-{{.MessageKind}}">{{.Message}}</div>
+{{end}}
+
+<section class="panel panel-narrow">
+  <form method="post" action="/admin/cuentas/{{.Cuenta.ID}}/editar" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="span-2">
+      <span>Banco</span>
+      <input type="text" name="banco" value="{{.Cuenta.Banco}}" maxlength="100" required>
+    </label>
+    <label>
+      <span>Tipo de cuenta</span>
+      <select name="tipo_cuenta">
+        {{range .Tipos}}<option value="{{.Valor}}" {{if eq .Valor $.Cuenta.TipoCuenta}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    <label>
+      <span>Moneda</span>
+      <select name="moneda">
+        {{range .Monedas}}<option value="{{.Valor}}" {{if eq .Valor $.Cuenta.Moneda}}selected{{end}}>{{.Nombre}}</option>{{end}}
+      </select>
+    </label>
+    <label class="span-2">
+      <span>Número de cuenta</span>
+      <input type="text" name="numero" value="{{.Cuenta.Numero}}" maxlength="40" required>
+    </label>
+    <label class="span-2">
+      <span>Nombre del titular</span>
+      <input type="text" name="titular" value="{{.Cuenta.Titular}}" maxlength="150" required>
+    </label>
+    <label class="span-2">
+      <span>Instrucciones para el cliente</span>
+      <input type="text" name="instrucciones" value="{{.Cuenta.Instrucciones}}" maxlength="300">
+    </label>
+    <label>
+      <span>Orden</span>
+      <input type="number" name="orden" value="{{.Cuenta.Orden}}" min="0" max="9999">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      <a href="/admin/cuentas" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{end}}

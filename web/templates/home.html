@@ -45,6 +45,25 @@
   </a>
   {{end}}
 
+  {{if index .ModulosVisibles "cuentas"}}
+  <a class="card" href="/admin/cuentas">
+    <span class="card-icon">🏦</span>
+    <h2>Cuentas bancarias</h2>
+    <p>Cuentas a las que los clientes pueden pagar por transferencia, con el
+      historial de cambios.</p>
+    <span class="card-cta">Administrar →</span>
+  </a>
+  {{end}}
+
+  {{if index .ModulosVisibles "correo"}}
+  <a class="card" href="/admin/correo">
+    <span class="card-icon">✉️</span>
+    <h2>Correo saliente</h2>
+    <p>Servidor con el que la tienda envía correos y quién recibe los avisos.</p>
+    <span class="card-cta">Configurar →</span>
+  </a>
+  {{end}}
+
   {{if index .ModulosVisibles "reportes"}}
   <a class="card" href="/admin/reportes">
     <span class="card-icon">📈</span>
@@ -65,7 +84,7 @@
   {{end}}
 </section>
 
-{{if and (not (index .ModulosVisibles "bd")) (not (index .ModulosVisibles "inventario")) (not (index .ModulosVisibles "sitio")) (not (index .ModulosVisibles "pedidos")) (not (index .ModulosVisibles "reportes")) (ne .CurrentRol "admin")}}
+{{if and (not (index .ModulosVisibles "bd")) (not (index .ModulosVisibles "inventario")) (not (index .ModulosVisibles "sitio")) (not (index .ModulosVisibles "pedidos")) (not (index .ModulosVisibles "cuentas")) (not (index .ModulosVisibles "correo")) (not (index .ModulosVisibles "reportes")) (ne .CurrentRol "admin")}}
 <p class="empty-hint">No tienes módulos asignados todavía. Pide al administrador que te dé acceso.</p>
 {{end}}
 {{end}}

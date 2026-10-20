@@ -23,12 +23,12 @@ runuser -u postgres -- pg_dump --format=custom manualidades > "$STAGE/manualidad
 pg_restore --list "$STAGE/manualidades.dump.tmp" > /dev/null
 mv "$STAGE/manualidades.dump.tmp" "$STAGE/manualidades.dump"
 
-# 2. Copia cifrada.
-restic backup --host manualidades --tag diario \
-  "$STAGE/manualidades.dump" \
-  "$APP_DIR/media" \
-  "$APP_DIR/admin.json" \
-  "$APP_DIR/config.json"
+# 2. Copia cifrada. smtp.json (servidor de correo) solo existe si se configuró.
+ARCHIVOS=("$STAGE/manualidades.dump" "$APP_DIR/media" "$APP_DIR/admin.json" "$APP_DIR/config.json")
+if [ -f "$APP_DIR/smtp.json" ]; then
+  ARCHIVOS+=("$APP_DIR/smtp.json")
+fi
+restic backup --host manualidades --tag diario "${ARCHIVOS[@]}"
 
 # 3. Historial: 7 diarias, 4 semanales y 6 mensuales.
 restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune

@@ -860,7 +860,7 @@ code {
   .topnav a, .topnav-right a { padding: 0 10px; }
   .topnav-user { padding: 0 8px; }
 }
-@media (max-width: 1750px) {
+@media (max-width: 1900px) {
   .topbar { --topbar-pad: 20px; }
 }
 
@@ -934,3 +934,5 @@ code {
   background: #EEE9E4;
   color: #6B5E55;
 }
+
+.cell-detalle { white-space: pre-line; }

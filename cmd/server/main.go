@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"manualidades/internal/config"
+	"manualidades/internal/cuentas"
 	"manualidades/internal/db"
 	"manualidades/internal/inventario"
 	"manualidades/internal/sitio"
@@ -47,6 +48,9 @@ func main() {
 			}
 			if err := sesiones.Migrate(conn); err != nil {
 				log.Printf("advertencia: no se pudo migrar el esquema de sesiones: %v", err)
+			}
+			if err := cuentas.Migrate(conn); err != nil {
+				log.Printf("advertencia: no se pudo migrar el esquema de cuentas bancarias: %v", err)
 			}
 			app.SetDB(conn)
 			log.Printf("conectado a la base de datos %q en %s:%d", cfg.DBName, cfg.Host, cfg.Port)

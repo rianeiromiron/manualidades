@@ -72,6 +72,21 @@ func NewRouter(app *App) http.Handler {
 	pedidosR.HandleFunc("/pagos", app.PagosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/{id}", app.PedidoDetalle).Methods(http.MethodGet, http.MethodPost)
 
+	cuentasR := admin.PathPrefix("/cuentas").Subrouter()
+	cuentasR.Use(app.RequireModule("cuentas"))
+	cuentasR.HandleFunc("", app.CuentasList).Methods(http.MethodGet)
+	cuentasR.HandleFunc("", app.CuentaCrear).Methods(http.MethodPost)
+	cuentasR.HandleFunc("/{id}/editar", app.CuentaEditar).Methods(http.MethodGet, http.MethodPost)
+	cuentasR.HandleFunc("/{id}/activar", app.CuentaActivar).Methods(http.MethodPost)
+	cuentasR.HandleFunc("/{id}/desactivar", app.CuentaDesactivar).Methods(http.MethodPost)
+	cuentasR.HandleFunc("/{id}/eliminar", app.CuentaEliminar).Methods(http.MethodPost)
+
+	correoR := admin.PathPrefix("/correo").Subrouter()
+	correoR.Use(app.RequireModule("correo"))
+	correoR.HandleFunc("", app.CorreoConfig).Methods(http.MethodGet)
+	correoR.HandleFunc("", app.CorreoGuardar).Methods(http.MethodPost)
+	correoR.HandleFunc("/probar", app.CorreoProbar).Methods(http.MethodPost)
+
 	reportesR := admin.PathPrefix("/reportes").Subrouter()
 	reportesR.Use(app.RequireModule("reportes"))
 	reportesR.HandleFunc("", app.ReportesHome).Methods(http.MethodGet)

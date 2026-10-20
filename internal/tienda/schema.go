@@ -79,6 +79,16 @@ ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(20) NOT NULL DE
 -- Lo que se cobró de envío a domicilio. Es una copia del costo vigente al hacer el
 -- pedido (ya incluido en total): cambiar el costo después no altera pedidos hechos.
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS costo_envio NUMERIC(12,2) NOT NULL DEFAULT 0;
+-- Cancelación de un pedido ya pagado: quién, cuándo y si sus productos
+-- volvieron al inventario.
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cancelado_por VARCHAR(50) NOT NULL DEFAULT '';
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cancelado_en TIMESTAMPTZ;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS inventario_devuelto BOOLEAN NOT NULL DEFAULT false;
+-- Seguimiento del dinero de un pedido cancelado. El reembolso se hace fuera del
+-- sistema (banco o pasarela); aquí solo queda anotado si falta y quién lo hizo.
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS reembolso VARCHAR(10) NOT NULL DEFAULT '';
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS reembolso_por VARCHAR(50) NOT NULL DEFAULT '';
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS reembolso_en TIMESTAMPTZ;
 -- Para limitar pedidos abiertos por correo.
 CREATE INDEX IF NOT EXISTS idx_pedidos_email ON pedidos(lower(cliente_email)) WHERE cliente_email <> '';
 `

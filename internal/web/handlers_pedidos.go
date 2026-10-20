@@ -1,6 +1,8 @@
 package web
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -79,7 +81,15 @@ func (a *App) PedidoDetalle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := tienda.ActualizarEstado(conn, id, r.FormValue("estado")); err != nil {
-			http.Error(w, "no se pudo actualizar el estado: "+err.Error(), http.StatusBadRequest)
+			switch {
+			case errors.Is(err, tienda.ErrPedidoCancelado), errors.Is(err, tienda.ErrUsarCancelacion),
+				errors.Is(err, tienda.ErrEstadoNoModificable), errors.Is(err, tienda.ErrEstadoInvalido):
+				// Mensajes propios, pensados para mostrarse.
+				a.renderPedidoDetalle(w, r, conn, id, "No se pudo cambiar el estado: "+err.Error()+".", "error", http.StatusConflict)
+			default:
+				log.Printf("pedidos: cambiando el estado del pedido %d: %v", id, err)
+				a.renderPedidoDetalle(w, r, conn, id, "No se pudo cambiar el estado. Inténtalo de nuevo.", "error", http.StatusInternalServerError)
+			}
 			return
 		}
 		http.Redirect(w, r, "/admin/pedidos/"+strconv.Itoa(id), http.StatusSeeOther)

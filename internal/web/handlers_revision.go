@@ -22,9 +22,12 @@ import (
 // un código en la dirección (?r=...) y nunca como texto, para que nadie pueda
 // hacer que la página muestre un mensaje cualquiera.
 var mensajesRevision = map[string]string{
-	"aprobado":  "Transferencia aprobada: el pedido quedó pagado y el inventario se descontó. Se avisó al cliente por correo.",
-	"rechazado": "Comprobante rechazado. El pedido espera un nuevo comprobante con un plazo nuevo de 48 horas, y se avisó al cliente por correo.",
-	"cancelado": "Comprobante rechazado y pedido cancelado: el inventario volvió a estar disponible y se avisó al cliente por correo.",
+	"cancelado_devuelto":     "Pedido cancelado. Sus productos volvieron al inventario.",
+	"cancelado_sin_devolver": "Pedido cancelado. El inventario no se tocó porque el producto no volvió a bodega.",
+	"reembolsado":            "Reembolso anotado.",
+	"aprobado":               "Transferencia aprobada: el pedido quedó pagado y el inventario se descontó. Se avisó al cliente por correo.",
+	"rechazado":              "Comprobante rechazado. El pedido espera un nuevo comprobante con un plazo nuevo de 48 horas, y se avisó al cliente por correo.",
+	"cancelado":              "Comprobante rechazado y pedido cancelado: el inventario volvió a estar disponible y se avisó al cliente por correo.",
 }
 
 func idsDeLaRuta(r *http.Request) (pedido, comprobante int, ok bool) {
@@ -60,12 +63,25 @@ func (a *App) renderPedidoDetalle(w http.ResponseWriter, r *http.Request, conn *
 			}
 		}
 	}
+	var cancelacion tienda.Cancelacion
+	if pedido.Estado == tienda.EstadoCancelado {
+		cancelacion, _ = tienda.GetCancelacion(conn, id)
+	}
+	// Cancelar tiene su propio botón (devuelve el inventario): no se ofrece en
+	// la lista de estados.
+	avanzables := make([]string, 0, len(tienda.EstadosValidos))
+	for _, e := range tienda.EstadosValidos {
+		if e != tienda.EstadoCancelado {
+			avanzables = append(avanzables, e)
+		}
+	}
 	w.WriteHeader(status)
 	render(w, r, "pedido_detalle.html", map[string]any{
 		"Title":          "Pedido",
 		"Active":         "pedidos",
 		"Pedido":         pedido,
-		"EstadosValidos": tienda.EstadosValidos,
+		"EstadosValidos": avanzables,
+		"Cancelacion":    cancelacion,
 		"Pago":           pago,
 		"Comprobantes":   comprobantes,
 		"PorRevisar":     porRevisar,
@@ -228,4 +244,85 @@ func tokenEnlace(conn *sql.DB, pedidoID int, base string) string {
 		return ""
 	}
 	return base + "/pedido/" + token
+}
+
+// PedidoCancelar cancela un pedido ya pagado: devuelve sus productos al
+// inventario (salvo que estuviera entregado y el producto no haya vuelto),
+// deja pendiente el reembolso y no se puede deshacer.
+func (a *App) PedidoCancelar(w http.ResponseWriter, r *http.Request) {
+	conn := a.requireDB(w, r, "pedidos")
+	if conn == nil {
+		return
+	}
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formulario inválido.", http.StatusBadRequest)
+		return
+	}
+	var volvio *bool
+	switch r.FormValue("volvio_a_bodega") {
+	case "si":
+		v := true
+		volvio = &v
+	case "no":
+		v := false
+		volvio = &v
+	}
+
+	quien := quienCambia(r)
+	res, err := tienda.CancelarPedido(conn, id, volvio, quien.Usuario, time.Now())
+	switch {
+	case err == nil:
+	case errors.Is(err, tienda.ErrPedidoNoExiste):
+		http.NotFound(w, r)
+		return
+	case errors.Is(err, tienda.ErrFaltaDecisionDeInventario):
+		a.renderPedidoDetalle(w, r, conn, id, "Indica si el producto volvió a bodega para poder cancelar el pedido entregado.", "error", http.StatusBadRequest)
+		return
+	case errors.Is(err, tienda.ErrPedidoCancelado), errors.Is(err, tienda.ErrNoSePuedeCancelar):
+		a.renderPedidoDetalle(w, r, conn, id, "No se pudo cancelar: "+err.Error()+".", "error", http.StatusConflict)
+		return
+	default:
+		log.Printf("pedidos: cancelando el pedido %d: %v", id, err)
+		a.renderPedidoDetalle(w, r, conn, id, "No se pudo cancelar el pedido. Inténtalo de nuevo.", "error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("pedidos: pedido %d cancelado por %q desde %s (inventario devuelto: %v, reembolso pendiente: Q%.2f)",
+		id, quien.Usuario, quien.IP, res.InventarioDevuelto, res.ReembolsoPendiente)
+	codigo := "cancelado_sin_devolver"
+	if res.InventarioDevuelto {
+		codigo = "cancelado_devuelto"
+	}
+	http.Redirect(w, r, "/admin/pedidos/"+strconv.Itoa(id)+"?r="+codigo, http.StatusSeeOther)
+}
+
+// PedidoReembolsado anota que ya se devolvió el dinero de un pedido cancelado.
+func (a *App) PedidoReembolsado(w http.ResponseWriter, r *http.Request) {
+	conn := a.requireDB(w, r, "pedidos")
+	if conn == nil {
+		return
+	}
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	quien := quienCambia(r)
+	switch err := tienda.MarcarReembolsado(conn, id, quien.Usuario); {
+	case err == nil:
+	case errors.Is(err, tienda.ErrSinReembolsoPendiente):
+		a.renderPedidoDetalle(w, r, conn, id, "Este pedido no tiene un reembolso pendiente.", "error", http.StatusConflict)
+		return
+	default:
+		log.Printf("pedidos: anotando el reembolso del pedido %d: %v", id, err)
+		a.renderPedidoDetalle(w, r, conn, id, "No se pudo anotar el reembolso. Inténtalo de nuevo.", "error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("pedidos: reembolso del pedido %d anotado por %q desde %s", id, quien.Usuario, quien.IP)
+	http.Redirect(w, r, "/admin/pedidos/"+strconv.Itoa(id)+"?r=reembolsado", http.StatusSeeOther)
 }

@@ -64,7 +64,7 @@ func TestReportesVentasTiendaYManual(t *testing.T) {
 	}
 
 	// Un pedido cancelado deja de contar como venta.
-	if err := ActualizarEstado(conn, in.PedidoID, EstadoCancelado); err != nil {
+	if err := func() error { _, err := CancelarPedido(conn, in.PedidoID, nil, "prueba", time.Now()); return err }(); err != nil {
 		t.Fatal(err)
 	}
 	f.Origen = reportes.OrigenTodos
@@ -97,9 +97,10 @@ func TestReportesVentasTiendaYManual(t *testing.T) {
 		t.Fatalf("productos = %+v", prods)
 	}
 
-	// Stock valorizado: 20 ingresos − 3 (tienda) − 2 − 1 = 14.
+	// Stock valorizado: 20 ingresos − 2 (venta manual) − 1 (merma) = 17. Las 3
+	// unidades del pedido de la tienda volvieron al inventario al cancelarlo.
 	stock, err := reportes.StockValorizado(conn, 0)
-	if err != nil || len(stock) != 1 || stock[0].Stock != 14 || stock[0].ValorCosto() != 56 {
+	if err != nil || len(stock) != 1 || stock[0].Stock != 17 || stock[0].ValorCosto() != 68 {
 		t.Fatalf("stock = %+v (err %v)", stock, err)
 	}
 

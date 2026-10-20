@@ -65,6 +65,11 @@ var EstadosValidos = []string{EstadoPagado, EstadoProcesando, EstadoEntregado, E
 
 var (
 	ErrEstadoInvalido = errors.New("estado de pedido inválido")
+	// ErrUsarCancelacion: cancelar un pedido pagado devuelve el inventario y deja
+	// pendiente el reembolso, así que solo se hace con CancelarPedido.
+	ErrUsarCancelacion = errors.New("para cancelar un pedido usa «Cancelar pedido»: así se devuelve el inventario")
+	// ErrPedidoCancelado: un pedido cancelado es definitivo.
+	ErrPedidoCancelado = errors.New("el pedido está cancelado y ya no se puede modificar: haz un pedido nuevo")
 	// ErrEstadoNoModificable: el pedido sigue en el ciclo de pago (o
 	// expiró), así que el admin no puede marcarlo como entregado, etc.
 	ErrEstadoNoModificable = errors.New("el pedido no está pagado: su estado no se puede cambiar a mano")
@@ -303,14 +308,21 @@ func ActualizarEstado(conn *sql.DB, pedidoID int, nuevoEstado string) error {
 	if !esEstadoValido(nuevoEstado) {
 		return ErrEstadoInvalido
 	}
+	if nuevoEstado == EstadoCancelado {
+		return ErrUsarCancelacion
+	}
 	res, err := conn.Exec(
-		`UPDATE pedidos SET estado = $1 WHERE id = $2 AND estado = ANY($3)`,
-		nuevoEstado, pedidoID, pq.Array(EstadosValidos),
+		`UPDATE pedidos SET estado = $1 WHERE id = $2 AND estado = ANY($3) AND estado <> $4`,
+		nuevoEstado, pedidoID, pq.Array(EstadosValidos), EstadoCancelado,
 	)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
+		var estado string
+		if conn.QueryRow(`SELECT estado FROM pedidos WHERE id = $1`, pedidoID).Scan(&estado) == nil && estado == EstadoCancelado {
+			return ErrPedidoCancelado
+		}
 		return ErrEstadoNoModificable
 	}
 	return nil

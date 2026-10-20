@@ -49,6 +49,11 @@ type Pago struct {
 	TarjetaUltimos4 string
 	MotivoRechazo   string
 	CreadoEn        time.Time
+	// Reembolso: "" (no aplica), "pendiente" (el pedido se canceló y falta devolver
+	// el dinero) o "hecho". El reembolso en sí ocurre fuera del sistema.
+	Reembolso    string
+	ReembolsoPor string
+	ReembolsoEn  *time.Time
 }
 
 // iniciarPago deja constancia de que se va a llamar a la pasarela, ANTES de
@@ -80,9 +85,14 @@ func actualizarPago(q querier, pagoID int, estado, referencia, tarjetaMarca, tar
 func scanPago(row interface{ Scan(dest ...any) error }) (Pago, error) {
 	var p Pago
 	var pedidoID sql.NullInt64
-	err := row.Scan(&p.ID, &pedidoID, &p.Metodo, &p.Monto, &p.Estado, &p.Referencia, &p.TarjetaMarca, &p.TarjetaUltimos4, &p.MotivoRechazo, &p.CreadoEn)
+	var reembolsoEn sql.NullTime
+	err := row.Scan(&p.ID, &pedidoID, &p.Metodo, &p.Monto, &p.Estado, &p.Referencia, &p.TarjetaMarca, &p.TarjetaUltimos4, &p.MotivoRechazo, &p.CreadoEn,
+		&p.Reembolso, &p.ReembolsoPor, &reembolsoEn)
 	if err != nil {
 		return Pago{}, err
+	}
+	if reembolsoEn.Valid {
+		p.ReembolsoEn = &reembolsoEn.Time
 	}
 	if pedidoID.Valid {
 		v := int(pedidoID.Int64)
@@ -93,7 +103,8 @@ func scanPago(row interface{ Scan(dest ...any) error }) (Pago, error) {
 
 func GetPagoPorPedido(conn *sql.DB, pedidoID int) (Pago, error) {
 	row := conn.QueryRow(
-		`SELECT id, pedido_id, metodo, monto, estado, referencia, tarjeta_marca, tarjeta_ultimos4, motivo_rechazo, creado_en
+		`SELECT id, pedido_id, metodo, monto, estado, referencia, tarjeta_marca, tarjeta_ultimos4, motivo_rechazo, creado_en,
+				reembolso, reembolso_por, reembolso_en
 		 FROM pagos WHERE pedido_id = $1 ORDER BY id DESC LIMIT 1`,
 		pedidoID,
 	)
@@ -105,7 +116,8 @@ func GetPagoPorPedido(conn *sql.DB, pedidoID int) (Pago, error) {
 // también pueda verlos, no solo las ventas concretadas en /admin/pedidos.
 func ListPagos(conn *sql.DB, limit int) ([]Pago, error) {
 	rows, err := conn.Query(
-		`SELECT id, pedido_id, metodo, monto, estado, referencia, tarjeta_marca, tarjeta_ultimos4, motivo_rechazo, creado_en
+		`SELECT id, pedido_id, metodo, monto, estado, referencia, tarjeta_marca, tarjeta_ultimos4, motivo_rechazo, creado_en,
+				reembolso, reembolso_por, reembolso_en
 		 FROM pagos ORDER BY creado_en DESC LIMIT $1`,
 		limit,
 	)

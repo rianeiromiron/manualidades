@@ -31,7 +31,8 @@
         </td>
         <td>Q {{printf "%.2f" .Monto}}</td>
         <td>{{if .Referencia}}{{.Referencia}}{{else}}—{{end}}</td>
-        <td>{{if .MotivoRechazo}}{{.MotivoRechazo}}{{else if .TarjetaUltimos4}}{{.TarjetaMarca}} terminada en {{.TarjetaUltimos4}}{{else}}—{{end}}</td>
+        <td>{{if .MotivoRechazo}}{{.MotivoRechazo}}{{else if .TarjetaUltimos4}}{{.TarjetaMarca}} terminada en {{.TarjetaUltimos4}}{{else}}—{{end}}
+          {{if eq .Reembolso "pendiente"}}<br><strong>Reembolso pendiente</strong>{{else if eq .Reembolso "hecho"}}<br>Reembolsado{{end}}</td>
         <td>
           {{if .PedidoID}}
           <a href="/admin/pedidos/{{.PedidoID}}" class="link-action">Ver pedido #{{.PedidoID}}</a>

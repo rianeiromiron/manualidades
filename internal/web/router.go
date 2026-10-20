@@ -71,6 +71,8 @@ func NewRouter(app *App) http.Handler {
 	pedidosR.HandleFunc("", app.PedidosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/pagos", app.PagosList).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/{id}", app.PedidoDetalle).Methods(http.MethodGet, http.MethodPost)
+	pedidosR.HandleFunc("/{id}/cancelar", app.PedidoCancelar).Methods(http.MethodPost)
+	pedidosR.HandleFunc("/{id}/reembolsado", app.PedidoReembolsado).Methods(http.MethodPost)
 	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/archivo", app.PedidoComprobanteArchivo).Methods(http.MethodGet)
 	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/aprobar", app.PedidoTransferenciaAprobar).Methods(http.MethodPost)
 	pedidosR.HandleFunc("/{id}/comprobantes/{cid}/rechazar", app.PedidoTransferenciaRechazar).Methods(http.MethodPost)

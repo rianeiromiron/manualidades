@@ -316,3 +316,51 @@ func AnularMovimiento(conn *sql.DB, id int, fecha time.Time) error {
 	}
 	return tx.Commit()
 }
+
+// AnularMovimientosDePedidoTx devuelve al inventario lo que un pedido de la
+// tienda sacó: anula, dentro de la transacción del llamador, cada consumo de ese
+// pedido que todavía no esté anulado. Usa el mismo mecanismo que la anulación
+// manual (el historial se conserva y el movimiento original queda marcado como
+// anulado), y su índice único hace que repetirlo no devuelva nada dos veces.
+// Devuelve cuántos movimientos anuló.
+//
+// El llamador debe haber bloqueado antes los productos del pedido
+// (BloquearProductos) para respetar el orden de bloqueo.
+func AnularMovimientosDePedidoTx(tx *sql.Tx, pedidoID int, fecha time.Time) (int, error) {
+	rows, err := tx.Query(
+		`SELECT m.id, m.producto_id, m.cantidad FROM movimientos_inventario m
+		 WHERE m.pedido_id = $1 AND m.tipo = 'consumo' AND m.anula_a IS NULL
+		   AND NOT EXISTS (SELECT 1 FROM movimientos_inventario a WHERE a.anula_a = m.id)
+		 ORDER BY m.id`, pedidoID)
+	if err != nil {
+		return 0, err
+	}
+	type consumo struct {
+		id, producto int
+		cantidad     float64
+	}
+	var pendientes []consumo
+	for rows.Next() {
+		var c consumo
+		if err := rows.Scan(&c.id, &c.producto, &c.cantidad); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		pendientes = append(pendientes, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	for _, c := range pendientes {
+		if _, err := tx.Exec(
+			`INSERT INTO movimientos_inventario (producto_id, tipo, cantidad, motivo, es_venta, precio_venta, fecha, anula_a, pedido_id)
+			 VALUES ($1, 'ingreso', $2, $3, false, 0, $4, $5, $6)`,
+			c.producto, c.cantidad, fmt.Sprintf("Anulación del movimiento #%d (pedido #%d cancelado)", c.id, pedidoID), fecha, c.id, pedidoID,
+		); err != nil {
+			return 0, err
+		}
+	}
+	return len(pendientes), nil
+}

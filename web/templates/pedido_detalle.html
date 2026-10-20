@@ -95,7 +95,14 @@
 </section>
 {{end}}
 
-{{if .Pedido.EsReal}}
+{{if eq .Pedido.Estado "cancelado"}}
+<section class="panel panel-narrow">
+  <h3>Pedido cancelado</h3>
+  <p>{{if .Cancelacion.En}}Cancelado el {{localtime .Cancelacion.En "02/01/2006 15:04"}}{{if .Cancelacion.Por}} por {{.Cancelacion.Por}}{{end}}.{{else}}Este pedido se canceló antes de que el sistema registrara quién y cuándo.{{end}}
+    {{if .Cancelacion.InventarioDevuelto}}Sus productos volvieron al inventario.{{else}}Su inventario no se devolvió.{{end}}
+    Un pedido cancelado no se puede reabrir: si el cliente aún lo quiere, haz un pedido nuevo.</p>
+</section>
+{{else if .Pedido.EsReal}}
 <section class="panel panel-narrow">
   <h3>Cambiar estado</h3>
   <form method="post" action="/admin/pedidos/{{.Pedido.ID}}" class="form-grid">
@@ -108,7 +115,6 @@
         <option value="{{.}}" {{if eq . $actual}}selected{{end}}>
           {{if eq . "procesando"}}Procesando en bodega
           {{else if eq . "entregado"}}Entregado
-          {{else if eq . "cancelado"}}Cancelado
           {{else}}Pagado{{end}}
         </option>
         {{end}}
@@ -116,6 +122,29 @@
     </label>
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Actualizar estado</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel panel-narrow">
+  <h3>Cancelar pedido</h3>
+  <p>{{if eq .Pedido.Estado "entregado"}}El pedido ya se entregó.{{else}}Los productos siguen en bodega, así que volverán al inventario.{{end}}
+    El pago quedará marcado para reembolsar (el dinero se devuelve fuera del sistema). <strong>No se puede deshacer.</strong></p>
+  <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/cancelar" class="form-grid"
+        data-confirm="¿Cancelar el pedido #{{.Pedido.ID}}? No se puede deshacer.{{if ne .Pedido.Estado "entregado"}} Sus productos volverán al inventario.{{end}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{if eq .Pedido.Estado "entregado"}}
+    <label class="span-2">
+      <span>¿El producto volvió a bodega?</span>
+      <select name="volvio_a_bodega" required>
+        <option value="">— Elige —</option>
+        <option value="si">Sí, volvió: devolverlo al inventario</option>
+        <option value="no">No volvió: no tocar el inventario</option>
+      </select>
+    </label>
+    {{end}}
+    <div class="form-actions">
+      <button type="submit" class="btn btn-ghost link-danger">Cancelar pedido</button>
     </div>
   </form>
 </section>
@@ -154,6 +183,20 @@
   <p>Monto: Q {{printf "%.2f" .Pago.Monto}} · Referencia: {{.Pago.Referencia}}<br>
     {{localtime .Pago.CreadoEn "02/01/2006 15:04"}}</p>
   {{if .Pago.MotivoRechazo}}<p><strong>Motivo:</strong> {{.Pago.MotivoRechazo}}</p>{{end}}
+  {{if eq .Pago.Reembolso "pendiente"}}
+  <div class="alert alert-error">
+    <strong>Falta devolver Q {{printf "%.2f" .Pago.Monto}} al cliente.</strong>
+    Hazlo desde tu banco{{if eq .Pago.Metodo "tarjeta"}} o la pasarela{{end}} y luego anótalo aquí.
+    <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/reembolsado"
+          data-confirm="¿Confirmas que ya devolviste Q {{printf "%.2f" .Pago.Monto}} al cliente?">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-primary">Marcar como reembolsado</button>
+    </form>
+  </div>
+  {{else if eq .Pago.Reembolso "hecho"}}
+  <p><span class="estado-badge estado-entregado">Reembolsado</span>
+    {{if .Pago.ReembolsoPor}}por {{.Pago.ReembolsoPor}}{{end}}{{if .Pago.ReembolsoEn}} el {{localtime .Pago.ReembolsoEn "02/01/2006 15:04"}}{{end}}</p>
+  {{end}}
 </section>
 {{end}}
 

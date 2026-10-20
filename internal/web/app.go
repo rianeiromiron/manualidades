@@ -3,6 +3,7 @@ package web
 import (
 	"database/sql"
 	"html/template"
+	"math"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -32,7 +33,11 @@ func localTime(t any, layout string) string {
 	}
 }
 
-var funcMap = template.FuncMap{"localtime": localTime}
+// difiere dice si dos montos en quetzales son distintos (tolera una fracción de
+// centavo, por el redondeo).
+func difiere(a, b float64) bool { return math.Abs(a-b) > 0.005 }
+
+var funcMap = template.FuncMap{"localtime": localTime, "difiere": difiere}
 
 // parseTemplates parsea uno o más archivos con funcMap ya registrado
 // (html/template exige que las funciones existan antes del parseo). El

@@ -126,6 +126,8 @@ func NewRouter(app *App) http.Handler {
 	r.HandleFunc("/checkout/transferencia", app.TiendaCheckoutTransferencia).Methods(http.MethodPost)
 	r.HandleFunc("/pedido/{token:"+patronToken+"}", app.TiendaPedido).Methods(http.MethodGet)
 	r.HandleFunc("/pedido/{token:"+patronToken+"}/comprobante", app.TiendaComprobante).Methods(http.MethodPost)
+	r.HandleFunc("/pedido/{token:"+patronToken+"}/entrega", app.TiendaPedidoEntrega).Methods(http.MethodPost)
+	r.HandleFunc("/pedido/{token:"+patronToken+"}/cancelar", app.TiendaPedidoCancelar).Methods(http.MethodPost)
 	r.HandleFunc("/consultar-pedido", app.TiendaConsultarPedido).Methods(http.MethodGet, http.MethodPost)
 
 	r.PathPrefix("/static/").Handler(noCache(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static")))))

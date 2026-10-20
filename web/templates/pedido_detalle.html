@@ -31,7 +31,7 @@
   {{if .Comprobantes}}
   <table class="data-table">
     <thead>
-      <tr><th>Comprobante</th><th>Boleta</th><th>Banco de origen</th><th>Fecha</th><th>Estado</th><th>Revisión</th></tr>
+      <tr><th>Comprobante</th><th>Boleta</th><th>Banco de origen</th><th>Fecha</th><th>Monto indicado</th><th>Estado</th><th>Revisión</th></tr>
     </thead>
     <tbody>
       {{range .Comprobantes}}
@@ -44,6 +44,11 @@
         <td class="cell-strong">{{.NumeroBoleta}}</td>
         <td>{{.BancoOrigen}}</td>
         <td>{{.Fecha.Format "02/01/2006"}}</td>
+        <td>
+          {{if gt .Monto 0.0}}Q {{printf "%.2f" .Monto}}
+          {{if difiere .Monto $.Pedido.Total}}<br><span class="estado-badge estado-cancelado">≠ total Q {{printf "%.2f" $.Pedido.Total}}</span>{{end}}
+          {{else}}<span class="cell-muted">—</span>{{end}}
+        </td>
         <td>
           {{if eq .Estado "aceptado"}}<span class="estado-badge estado-entregado">Aceptado</span>
           {{else if eq .Estado "rechazado"}}<span class="estado-badge estado-cancelado">Rechazado</span>
@@ -66,6 +71,13 @@
     <p><strong>Antes de aprobar,</strong> busca en tu banca en línea un depósito de
       <strong>Q {{printf "%.2f" .Pedido.Total}}</strong> con la boleta <strong>{{.PorRevisar.NumeroBoleta}}</strong>
       ({{.PorRevisar.BancoOrigen}}, {{.PorRevisar.Fecha.Format "02/01/2006"}}). La imagen sola no prueba el pago.</p>
+    {{if and (gt .PorRevisar.Monto 0.0) (difiere .PorRevisar.Monto .Pedido.Total)}}
+    <div class="alert alert-error">
+      <strong>El monto no coincide.</strong> El cliente indicó <strong>Q {{printf "%.2f" .PorRevisar.Monto}}</strong>
+      y el total del pedido es <strong>Q {{printf "%.2f" .Pedido.Total}}</strong>. Comprueba en tu banco cuánto llegó de verdad:
+      si falta dinero, rechaza el comprobante y pídele el resto.
+    </div>
+    {{end}}
 
     <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/comprobantes/{{.PorRevisar.ID}}/aprobar"
           data-confirm="¿Confirmas que el depósito de Q {{printf "%.2f" .Pedido.Total}} aparece en tu cuenta? Se descontará el inventario y el pedido quedará pagado.">

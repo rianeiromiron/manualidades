@@ -432,3 +432,6 @@ a.t-pag-num:hover { background: var(--t-acento-suave); }
 .t-sin-pagos { max-width: 560px; margin: 0 auto; }
 .t-aviso-stock { margin: 10px 0 0; color: var(--t-acento); font-size: 0.92rem; }
 .t-linea-qty button:disabled { opacity: 0.4; cursor: not-allowed; }
+.t-cancelar { margin-top: 14px; }
+.t-peligro { color: #A8461E; }
+#tEnvioNota[hidden], #tDireccionRow[hidden] { display: none; }

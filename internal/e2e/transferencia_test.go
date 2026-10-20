@@ -151,7 +151,7 @@ func (c *cliente) subeComprobante(token string, campos map[string]string, archiv
 
 func camposComprobante(boleta string) map[string]string {
 	return map[string]string{
-		"banco_origen": "Banco Industrial", "numero_boleta": boleta, "fecha": time.Now().Format("2006-01-02"),
+		"banco_origen": "Banco Industrial", "numero_boleta": boleta, "fecha": time.Now().Format("2006-01-02"), "monto": "25.00",
 	}
 }
 

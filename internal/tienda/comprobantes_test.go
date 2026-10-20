@@ -13,7 +13,7 @@ import (
 var ahora = time.Date(2026, 10, 20, 10, 0, 0, 0, time.Local)
 
 func datosCompr(boleta string) DatosComprobante {
-	return DatosComprobante{NumeroBoleta: boleta, BancoOrigen: "Banco Industrial", Fecha: ahora}
+	return DatosComprobante{NumeroBoleta: boleta, BancoOrigen: "Banco Industrial", Fecha: ahora, Monto: 10}
 }
 
 func nuevaTransferencia(t *testing.T, conn *sql.DB, producto int, email string) Transferencia {

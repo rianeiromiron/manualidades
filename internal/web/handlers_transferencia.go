@@ -31,12 +31,13 @@ var (
 	transferenciaLimiter = nuevoLimitador(6, time.Hour, time.Hour)
 	comprobanteLimiter   = nuevoLimitador(10, time.Hour, time.Hour)
 	consultaLimiter      = nuevoLimitador(5, 15*time.Minute, 15*time.Minute)
+	cambiosLimiter       = nuevoLimitador(20, time.Hour, time.Hour)
 )
 
 // ReiniciarLimitadores borra los contadores de intentos y de reenvíos. Existe
 // solo para las pruebas, que comparten proceso y dirección IP.
 func ReiniciarLimitadores() {
-	for _, l := range []*limitador{transferenciaLimiter, comprobanteLimiter, consultaLimiter, checkoutLimiter} {
+	for _, l := range []*limitador{transferenciaLimiter, comprobanteLimiter, consultaLimiter, cambiosLimiter, checkoutLimiter} {
 		l.mu.Lock()
 		l.registros = make(map[string]*registroIntentos)
 		l.mu.Unlock()
@@ -365,8 +366,21 @@ func (a *App) TiendaPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, kind := "", ""
-	if r.URL.Query().Get("enviado") == "1" {
+	switch r.URL.Query().Get("enviado") {
+	case "1":
 		msg, kind = "Recibimos tu comprobante. Lo revisaremos y te avisaremos por correo.", "success"
+	case "diferencia":
+		// El monto que el cliente indicó no coincide con el total: se acepta (puede
+		// faltar un envío, o sobrar un centavo) pero se le avisa y el negocio lo ve.
+		msg, kind = "Recibimos tu comprobante. El monto que indicaste es distinto al total del pedido: lo revisaremos y, si hace falta, te escribiremos.", "success"
+	}
+	switch r.URL.Query().Get("r") {
+	case "entrega":
+		msg, kind = "Actualizamos la forma de entrega de tu pedido. Revisa abajo el monto que debes transferir.", "success"
+	case "sin-cambio":
+		msg, kind = "Tu pedido ya estaba así: no cambió nada.", "success"
+	case "cancelado":
+		msg, kind = "Cancelaste tu pedido. Los productos volvieron a estar disponibles.", "success"
 	}
 	a.renderPedidoTransferencia(w, conn, p, token, msg, kind, http.StatusOK)
 }
@@ -406,8 +420,9 @@ func (a *App) TiendaComprobante(w http.ResponseWriter, r *http.Request) {
 		fallo(http.StatusBadRequest, "Indica la fecha de la transferencia.")
 		return
 	}
+	monto, _ := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(r.FormValue("monto")), ",", "."), 64)
 	datos, err := (tienda.DatosComprobante{
-		NumeroBoleta: r.FormValue("numero_boleta"), BancoOrigen: r.FormValue("banco_origen"), Fecha: fecha,
+		NumeroBoleta: r.FormValue("numero_boleta"), BancoOrigen: r.FormValue("banco_origen"), Fecha: fecha, Monto: monto,
 	}).Limpiar(time.Now())
 	if err != nil {
 		fallo(http.StatusBadRequest, tienda.TextoComprobante(err))
@@ -465,7 +480,105 @@ func (a *App) TiendaComprobante(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Printf("correo: hay una transferencia por revisar (pedido %d) pero no hay correos de aviso configurados", p.ID)
 	}
-	http.Redirect(w, r, "/pedido/"+token+"?enviado=1", http.StatusSeeOther)
+	codigo := "1"
+	if difiere(datos.Monto, p.Total) {
+		codigo = "diferencia"
+	}
+	http.Redirect(w, r, "/pedido/"+token+"?enviado="+codigo, http.StatusSeeOther)
+}
+
+// TiendaPedidoEntrega deja que el cliente cambie entre «recoger en tienda» y
+// «entrega a domicilio» mientras su pedido espera la transferencia. Recalcula el
+// monto a transferir; el plazo de la reserva no se extiende.
+func (a *App) TiendaPedidoEntrega(w http.ResponseWriter, r *http.Request) {
+	conn, p, token, ok := a.pedidoDeLaRuta(w, r)
+	if !ok {
+		return
+	}
+	fallo := func(status int, msg string) {
+		a.renderPedidoTransferencia(w, conn, p, token, msg, "error", status)
+	}
+	ip := clientIP(r)
+	if !cambiosLimiter.Permitido(ip) {
+		fallo(http.StatusTooManyRequests, "Demasiados intentos. Espera un rato e inténtalo de nuevo.")
+		return
+	}
+	cambiosLimiter.Contar(ip)
+	if err := r.ParseForm(); err != nil {
+		fallo(http.StatusBadRequest, "Formulario inválido.")
+		return
+	}
+
+	metodo := r.FormValue("metodo_entrega")
+	envio, err := costoEnvioPara(conn, metodo)
+	if err != nil {
+		log.Printf("transferencia: leyendo el costo de envío: %v", err)
+		fallo(http.StatusInternalServerError, "No se pudo cambiar la entrega. Inténtalo de nuevo.")
+		return
+	}
+	res, err := tienda.CambiarEntrega(conn, p.ID, metodo, r.FormValue("direccion_entrega"), envio)
+	switch {
+	case err == nil:
+	case errors.Is(err, tienda.ErrEntregaInvalida):
+		fallo(http.StatusBadRequest, tienda.TextoEntrega(err))
+		return
+	case errors.Is(err, tienda.ErrPedidoNoModificable):
+		fallo(http.StatusConflict, "Este pedido ya no admite cambios. Si ya subiste tu comprobante, el negocio lo está revisando.")
+		return
+	default:
+		log.Printf("transferencia: cambiando la entrega del pedido %d: %v", p.ID, err)
+		fallo(http.StatusInternalServerError, "No se pudo cambiar la entrega. Inténtalo de nuevo.")
+		return
+	}
+	if !res.Cambio {
+		http.Redirect(w, r, "/pedido/"+token+"?r=sin-cambio", http.StatusSeeOther)
+		return
+	}
+
+	// Aviso al cliente con el monto nuevo.
+	if actualizado, err := tienda.GetPedido(conn, p.ID); err == nil && actualizado.ClienteEmail != "" {
+		cfg, _ := correo.Load()
+		a.enviarCorreo(cfg, correoEntregaActualizada(actualizado, urlPublica(r, cfg), token))
+	}
+	http.Redirect(w, r, "/pedido/"+token+"?r=entrega", http.StatusSeeOther)
+}
+
+// TiendaPedidoCancelar deja que el cliente cancele su propio pedido mientras
+// espera la transferencia. Libera la reserva; si ya subió un comprobante, la
+// decisión es del negocio.
+func (a *App) TiendaPedidoCancelar(w http.ResponseWriter, r *http.Request) {
+	conn, p, token, ok := a.pedidoDeLaRuta(w, r)
+	if !ok {
+		return
+	}
+	fallo := func(status int, msg string) {
+		a.renderPedidoTransferencia(w, conn, p, token, msg, "error", status)
+	}
+	ip := clientIP(r)
+	if !cambiosLimiter.Permitido(ip) {
+		fallo(http.StatusTooManyRequests, "Demasiados intentos. Espera un rato e inténtalo de nuevo.")
+		return
+	}
+	cambiosLimiter.Contar(ip)
+
+	switch err := tienda.CancelarPorElCliente(conn, p.ID); {
+	case err == nil:
+	case errors.Is(err, tienda.ErrEnRevision):
+		fallo(http.StatusConflict, "Ya subiste tu comprobante y el negocio lo está revisando, así que no se puede cancelar desde aquí. Comunícate con la tienda.")
+		return
+	case errors.Is(err, tienda.ErrPedidoCancelado):
+		fallo(http.StatusConflict, "Este pedido ya estaba cancelado.")
+		return
+	case errors.Is(err, tienda.ErrNoSePuedeCancelar):
+		fallo(http.StatusConflict, "Este pedido ya no se puede cancelar desde aquí. Comunícate con la tienda.")
+		return
+	default:
+		log.Printf("transferencia: cancelando el pedido %d a pedido del cliente: %v", p.ID, err)
+		fallo(http.StatusInternalServerError, "No se pudo cancelar el pedido. Inténtalo de nuevo.")
+		return
+	}
+	log.Printf("pedidos: pedido %d cancelado por el cliente desde %s", p.ID, ip)
+	http.Redirect(w, r, "/pedido/"+token+"?r=cancelado", http.StatusSeeOther)
 }
 
 // ---- Recuperar el enlace ----

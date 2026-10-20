@@ -78,6 +78,10 @@ Si no lo pediste tú, puedes ignorar este correo.
 
 // correoComprobanteRecibido avisa al negocio que hay una transferencia por revisar.
 func correoComprobanteRecibido(para []string, p tienda.Pedido, d tienda.DatosComprobante, base string) correo.Mensaje {
+	diferencia := ""
+	if difiere(d.Monto, p.Total) {
+		diferencia = fmt.Sprintf("\n⚠ OJO: el cliente indicó Q %.2f y el total del pedido es Q %.2f. Revisa cuál es el monto real del depósito.\n", d.Monto, p.Total)
+	}
 	admin := "(configura la dirección de la tienda en la pantalla Correo para recibir el enlace)"
 	if base != "" {
 		admin = base + "/admin/pedidos/" + fmt.Sprint(p.ID)
@@ -92,14 +96,15 @@ Cliente: %s (%s, %s)
 Monto del pedido: Q %.2f
 
 Lo que indicó el cliente:
+  Monto transferido: Q %.2f
   Banco de origen: %s
   Número de boleta: %s
   Fecha: %s
-
+%s
 Revísala en tu banca en línea (busca el monto y la boleta) y luego apruébala o recházala aquí:
 %s
-`, p.ID, p.ClienteNombre, p.ClienteTelefono, p.ClienteEmail, p.Total, d.BancoOrigen, d.NumeroBoleta,
-			d.Fecha.Format("02/01/2006"), admin),
+`, p.ID, p.ClienteNombre, p.ClienteTelefono, p.ClienteEmail, p.Total, d.Monto, d.BancoOrigen, d.NumeroBoleta,
+			d.Fecha.Format("02/01/2006"), diferencia, admin),
 	}
 }
 
@@ -119,6 +124,33 @@ Cancelamos tu pedido #%d, que todavía no se había pagado. Los productos volvie
 %s
 Si ya hiciste una transferencia o quieres volver a pedir, comunícate con la tienda y ten a mano tu comprobante.
 `, p.ClienteNombre, p.ID, razon),
+	}
+}
+
+// correoEntregaActualizada avisa al cliente que cambió la entrega de su pedido y
+// cuánto debe transferir ahora.
+func correoEntregaActualizada(p tienda.Pedido, base, token string) correo.Mensaje {
+	entrega := "Recoger en la tienda."
+	if p.MetodoEntrega == "domicilio" {
+		entrega = fmt.Sprintf("Entrega a domicilio en: %s (incluye Q %.2f de envío).", p.DireccionEntrega, p.CostoEnvio)
+	}
+	enlace := ""
+	if base != "" {
+		enlace = "\nPuedes ver las cuentas y subir tu comprobante aquí:\n" + base + "/pedido/" + token + "\n"
+	}
+	return correo.Mensaje{
+		Para:   []string{p.ClienteEmail},
+		Asunto: fmt.Sprintf("Actualizamos tu pedido #%d: nuevo monto a transferir", p.ID),
+		Texto: fmt.Sprintf(`Hola %s,
+
+Actualizamos la entrega de tu pedido #%d.
+
+%s
+
+El monto que debes transferir ahora es Q %.2f. Si ya habías hecho una transferencia por otro monto, comunícate con la tienda antes de subir tu comprobante.
+%s
+Guardamos tus productos hasta el %s.
+`, p.ClienteNombre, p.ID, entrega, p.Total, enlace, fechaLarga(p.ExpiraEn)),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -56,6 +57,8 @@ type DatosComprobante struct {
 	NumeroBoleta string
 	BancoOrigen  string
 	Fecha        time.Time // solo importa el día
+	// Monto es lo que el cliente dice haber transferido, en quetzales.
+	Monto float64
 }
 
 var reBoleta = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z\-]*$`)
@@ -89,6 +92,13 @@ func (d DatosComprobante) Limpiar(hoy time.Time) (DatosComprobante, error) {
 		return d, invalido("La fecha de la transferencia es de hace más de 30 días.")
 	}
 	d.Fecha = dia
+
+	// Se redondea a centavos. No se exige que coincida con el total: el negocio lo
+	// compara al revisar y decide (puede faltar un envío, o sobrar un centavo).
+	d.Monto = math.Round(d.Monto*100) / 100
+	if math.IsNaN(d.Monto) || d.Monto <= 0 || d.Monto > 999999.99 {
+		return d, invalido("Indica el monto que transferiste, en quetzales.")
+	}
 	return d, nil
 }
 
@@ -101,6 +111,7 @@ type Comprobante struct {
 	Fecha        time.Time
 	Estado       string
 	Nota         string
+	Monto        float64
 	CreadoEn     time.Time
 	// RevisadoPor y RevisadoEn quedan al aprobar o rechazar.
 	RevisadoPor string
@@ -150,9 +161,9 @@ func RegistrarComprobante(conn *sql.DB, pedidoID int, archivo string, d DatosCom
 
 	var id int
 	err = tx.QueryRow(
-		`INSERT INTO comprobantes (pedido_id, archivo, numero_boleta, banco_origen, fecha_transferencia)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		pedidoID, archivo, d.NumeroBoleta, d.BancoOrigen, d.Fecha,
+		`INSERT INTO comprobantes (pedido_id, archivo, numero_boleta, banco_origen, fecha_transferencia, monto)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		pedidoID, archivo, d.NumeroBoleta, d.BancoOrigen, d.Fecha, d.Monto,
 	).Scan(&id)
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) && pqErr.Code == "23505" { // unique_violation
@@ -174,7 +185,7 @@ func RegistrarComprobante(conn *sql.DB, pedidoID int, archivo string, d DatosCom
 func ListComprobantes(conn *sql.DB, pedidoID int) ([]Comprobante, error) {
 	rows, err := conn.Query(
 		`SELECT id, pedido_id, archivo, numero_boleta, banco_origen, fecha_transferencia, estado, nota, creado_en,
-			revisado_por, revisado_en
+			revisado_por, revisado_en, monto
 		 FROM comprobantes WHERE pedido_id = $1 ORDER BY id`, pedidoID)
 	if err != nil {
 		return nil, err
@@ -185,7 +196,7 @@ func ListComprobantes(conn *sql.DB, pedidoID int) ([]Comprobante, error) {
 		var c Comprobante
 		var revisado sql.NullTime
 		if err := rows.Scan(&c.ID, &c.PedidoID, &c.Archivo, &c.NumeroBoleta, &c.BancoOrigen, &c.Fecha, &c.Estado, &c.Nota, &c.CreadoEn,
-			&c.RevisadoPor, &revisado); err != nil {
+			&c.RevisadoPor, &revisado, &c.Monto); err != nil {
 			return nil, err
 		}
 		if revisado.Valid {

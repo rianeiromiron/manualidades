@@ -48,6 +48,11 @@
           <input type="date" name="fecha" min="{{.Desde}}" max="{{.Hoy}}" value="{{.Hoy}}" required>
         </label>
         <label class="span-2">
+          <span>Monto que transferiste (Q)</span>
+          <input type="number" name="monto" step="0.01" min="0.01" max="999999.99" value="{{printf "%.2f" .Pedido.Total}}" required>
+          <small class="t-ayuda">Escribe lo que de verdad transferiste: si no es el total del pedido, lo revisaremos.</small>
+        </label>
+        <label class="span-2">
           <span>Foto o captura del comprobante (JPG, PNG o WebP, máximo 10 MB)</span>
           <input type="file" name="comprobante" accept="image/jpeg,image/png,image/webp" required>
         </label>
@@ -58,6 +63,32 @@
       {{else}}
       <p>Ya enviaste el máximo de comprobantes para este pedido.</p>
       {{end}}
+    </section>
+
+    <section class="t-paso">
+      <h3>¿Quieres cambiar algo?</h3>
+      <p class="t-ayuda"><strong>Si ya hiciste la transferencia, no cambies la entrega:</strong> el monto a transferir sería distinto.
+        En ese caso sube tu comprobante arriba. El plazo para transferir no se extiende al hacer un cambio.</p>
+      <form method="post" action="/pedido/{{.Token}}/entrega" class="t-form-grid" id="tFormEntrega">
+        <div class="t-entrega-opciones span-2">
+          <label><input type="radio" name="metodo_entrega" value="recoger" {{if ne .Pedido.MetodoEntrega "domicilio"}}checked{{end}}> Recoger en tienda</label>
+          <label><input type="radio" name="metodo_entrega" value="domicilio" {{if eq .Pedido.MetodoEntrega "domicilio"}}checked{{end}}> Entrega a domicilio</label>
+        </div>
+        <label class="span-2" id="tDireccionRow" {{if ne .Pedido.MetodoEntrega "domicilio"}}hidden{{end}}>
+          <span>Dirección de entrega</span>
+          <input type="text" name="direccion_entrega" maxlength="255" value="{{.Pedido.DireccionEntrega}}">
+        </label>
+        <p class="span-2 t-ayuda" id="tEnvioNota" data-costo="{{if eq .Pedido.MetodoEntrega "domicilio"}}{{printf "%.2f" .Pedido.CostoEnvio}}{{else}}{{printf "%.2f" .Sitio.CostoEnvio}}{{end}}">
+          El envío a domicilio cuesta Q {{if eq .Pedido.MetodoEntrega "domicilio"}}{{printf "%.2f" .Pedido.CostoEnvio}}{{else}}{{printf "%.2f" .Sitio.CostoEnvio}}{{end}}.
+        </p>
+        <div class="span-2">
+          <button type="submit" class="t-btn t-btn-ghost t-btn-block">Guardar cambio de entrega</button>
+        </div>
+      </form>
+      <form method="post" action="/pedido/{{.Token}}/cancelar" class="t-cancelar"
+            data-confirm="¿Cancelar tu pedido #{{.Pedido.ID}}? Los productos volverán a estar disponibles y no se puede deshacer.">
+        <button type="submit" class="t-btn t-btn-ghost t-btn-block t-peligro">Cancelar mi pedido</button>
+      </form>
     </section>
     {{else if eq .Pedido.Estado "transferencia_por_revisar"}}
     <section class="t-paso">
@@ -90,7 +121,7 @@
       <h3>Comprobantes enviados</h3>
       {{range .Comprobantes}}
       <p class="t-comprobante">
-        Boleta <strong>{{.NumeroBoleta}}</strong> · {{.BancoOrigen}} · {{.Fecha.Format "02/01/2006"}} —
+        Boleta <strong>{{.NumeroBoleta}}</strong> · {{.BancoOrigen}} · {{.Fecha.Format "02/01/2006"}}{{if gt .Monto 0.0}} · Q {{printf "%.2f" .Monto}}{{end}} —
         {{if eq .Estado "aceptado"}}aceptado{{else if eq .Estado "rechazado"}}rechazado{{if .Nota}}: {{.Nota}}{{end}}{{else}}en revisión{{end}}
       </p>
       {{end}}
@@ -121,4 +152,6 @@
     </div>
   </div>
 </div>
+
+<script src="/static/js/tienda-pedido.js"></script>
 {{end}}

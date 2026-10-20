@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS comprobantes (
 	revisado_en         TIMESTAMPTZ,
 	creado_en           TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+-- Lo que el cliente dice haber transferido. El negocio lo compara con el total del
+-- pedido al revisar. 0 en los comprobantes anteriores a este campo.
+ALTER TABLE comprobantes ADD COLUMN IF NOT EXISTS monto NUMERIC(12,2) NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_comprobantes_pedido ON comprobantes(pedido_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_comprobantes_boleta
 	ON comprobantes (lower(banco_origen), lower(numero_boleta)) WHERE estado <> 'rechazado';

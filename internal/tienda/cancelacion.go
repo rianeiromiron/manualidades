@@ -10,9 +10,11 @@ import (
 
 var (
 	// ErrNoSePuedeCancelar: solo se cancela un pedido ya pagado (pagado,
-	// procesando o entregado). Uno sin pagar se libera solo al vencer, o se
-	// rechaza desde la revisión de la transferencia.
-	ErrNoSePuedeCancelar = errors.New("este pedido no está pagado, así que no se puede cancelar desde aquí")
+	// procesando o entregado) o uno que espera la transferencia.
+	ErrNoSePuedeCancelar = errors.New("este pedido no se puede cancelar en su estado actual")
+	// ErrEnRevision: el cliente ya subió un comprobante; se resuelve rechazándolo
+	// (o aprobándolo), no cancelando a ciegas.
+	ErrEnRevision = errors.New("este pedido tiene un comprobante por revisar: recházalo desde la revisión de la transferencia")
 	// ErrFaltaDecisionDeInventario: cancelar un pedido ya entregado exige decir si
 	// el producto volvió a bodega.
 	ErrFaltaDecisionDeInventario = errors.New("indica si el producto volvió a bodega")
@@ -27,13 +29,19 @@ const (
 
 // ResultadoCancelacion dice qué pasó al cancelar.
 type ResultadoCancelacion struct {
+	// ReservaLiberada es true cuando se canceló un pedido que aún no se había
+	// pagado: no salió nada del inventario, solo se soltó la reserva.
+	ReservaLiberada    bool
 	InventarioDevuelto bool
 	// ReembolsoPendiente es el monto aprobado que falta devolver al cliente (0 si
 	// el pedido no tenía un pago aprobado).
 	ReembolsoPendiente float64
 }
 
-// CancelarPedido cancela un pedido ya pagado, en una sola transacción:
+// CancelarPedido cancela un pedido, en una sola transacción. Si el pedido aún
+// espera la transferencia (no se ha pagado), solo suelta la reserva de sus
+// productos: no hay inventario que devolver ni dinero que reembolsar. Si ya está
+// pagado:
 //
 //   - Pagado o procesando: sus productos siguen en bodega, así que se devuelven
 //     al inventario siempre.
@@ -79,6 +87,20 @@ func CancelarPedido(conn *sql.DB, pedidoID int, volvioABodega *bool, usuario str
 	switch estado {
 	case EstadoCancelado:
 		return ResultadoCancelacion{}, ErrPedidoCancelado
+	case EstadoTransferenciaPorRevisar:
+		return ResultadoCancelacion{}, ErrEnRevision
+	case EstadoEsperaTransferencia:
+		// Sin pago: la reserva se libera al dejar de estar en espera.
+		if _, err := tx.Exec(
+			`UPDATE pedidos SET estado = $1, expira_en = NULL, cancelado_por = $2, cancelado_en = now(), inventario_devuelto = false WHERE id = $3`,
+			EstadoCancelado, truncar(usuario, 50), pedidoID,
+		); err != nil {
+			return ResultadoCancelacion{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return ResultadoCancelacion{}, err
+		}
+		return ResultadoCancelacion{ReservaLiberada: true}, nil
 	case EstadoPagado, EstadoProcesando, EstadoEntregado:
 	default:
 		return ResultadoCancelacion{}, ErrNoSePuedeCancelar
@@ -144,6 +166,9 @@ type Cancelacion struct {
 	Por                string
 	En                 *time.Time
 	InventarioDevuelto bool
+	// SinPago es true si el pedido se canceló antes de pagarse (no tiene ningún
+	// pago aprobado).
+	SinPago bool
 }
 
 // GetCancelacion lee quién canceló un pedido, cuándo y si se devolvió el
@@ -158,5 +183,13 @@ func GetCancelacion(conn *sql.DB, pedidoID int) (Cancelacion, error) {
 	if en.Valid {
 		c.En = &en.Time
 	}
-	return c, err
+	if err != nil {
+		return c, err
+	}
+	var aprobados int
+	if err := conn.QueryRow(`SELECT count(*) FROM pagos WHERE pedido_id = $1 AND estado = $2`, pedidoID, EstadoPagoAprobado).Scan(&aprobados); err != nil {
+		return c, err
+	}
+	c.SinPago = aprobados == 0
+	return c, nil
 }

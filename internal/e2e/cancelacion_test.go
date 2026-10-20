@@ -191,7 +191,7 @@ func TestCancelarUnPedidoEntregadoPreguntaPorBodega(t *testing.T) {
 	}
 }
 
-func TestNoSePuedeCancelarUnPedidoSinPagar(t *testing.T) {
+func TestNoSePuedeCancelarUnPedidoEnRevision(t *testing.T) {
 	e := nuevoEntornoTransferencia(t, true)
 	admin := e.cliente()
 	admin.entraComoAdmin()
@@ -199,13 +199,97 @@ func TestNoSePuedeCancelarUnPedidoSinPagar(t *testing.T) {
 	_, id := e.pedidoConComprobante(t, e.cliente(), "ana@ejemplo.com", "BOL-12345", false) // en revisión, sin aprobar
 
 	resp, body := admin.post(fmt.Sprintf("/admin/pedidos/%d/cancelar", id), url.Values{"csrf": {csrf}})
-	if resp.StatusCode != http.StatusConflict || !strings.Contains(body, "no está pagado") {
-		t.Errorf("cancelar sin pagar: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusConflict || !strings.Contains(body, "comprobante por revisar") {
+		t.Errorf("cancelar con comprobante en revisión: %d", resp.StatusCode)
 	}
 	if got := estadoDe(t, e.entorno, id); got != "transferencia_por_revisar" {
 		t.Errorf("estado = %q", got)
 	}
 	if resp, _ := admin.post("/admin/pedidos/99999/cancelar", url.Values{"csrf": {csrf}}); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("pedido inexistente: %d, quiero 404", resp.StatusCode)
+	}
+}
+
+func TestCancelarUnPedidoQueEsperaTransferencia(t *testing.T) {
+	e := nuevoEntornoTransferencia(t, true)
+	cli := e.cliente()
+	token, id := e.creaPedido(t, cli, "ana@ejemplo.com")
+	e.esperaCorreo(t)
+	admin := e.cliente()
+	admin.entraComoAdmin()
+	csrf := admin.csrf()
+	ruta := fmt.Sprintf("/admin/pedidos/%d", id)
+
+	if _, body := cli.get("/"); !strings.Contains(body, `data-stock="9"`) {
+		t.Fatal("el pedido debe estar reservando una unidad")
+	}
+	// El detalle ofrece cancelar, sin preguntas de bodega ni de reembolso.
+	_, body := admin.get(ruta)
+	if !strings.Contains(body, "Cancelar pedido") || !strings.Contains(body, "todavía no ha subido su comprobante") ||
+		strings.Contains(body, `name="volvio_a_bodega"`) {
+		t.Fatal("un pedido que espera la transferencia debe poder cancelarse")
+	}
+
+	// Seguridad: sin CSRF no se cancela.
+	cancelar := ruta + "/cancelar"
+	if resp, _ := admin.post(cancelar, url.Values{"motivo": {"x"}}); resp.StatusCode == http.StatusSeeOther {
+		t.Error("una cancelación sin CSRF fue aceptada")
+	}
+	// Un motivo con salto de línea se rechaza.
+	if resp, _ := admin.post(cancelar, url.Values{"csrf": {csrf}, "motivo": {"mal\nBcc: x@y.z"}}); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("motivo con salto de línea: %d, quiero 400", resp.StatusCode)
+	}
+	if got := estadoDe(t, e.entorno, id); got != "espera_transferencia" {
+		t.Fatalf("un intento inválido cambió el estado a %q", got)
+	}
+
+	resp, _ := admin.post(cancelar, url.Values{"csrf": {csrf}, "motivo": {"El cliente pidió cancelar <b>hoy</b>"}})
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != ruta+"?r=cancelado_liberado" {
+		t.Fatalf("cancelar: %d → %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if got := estadoDe(t, e.entorno, id); got != "cancelado" {
+		t.Fatalf("estado = %q, quiero cancelado", got)
+	}
+
+	// La reserva se liberó; el inventario nunca se tocó.
+	if _, body := cli.get("/"); !strings.Contains(body, `data-stock="10"`) {
+		t.Error("tras cancelar, la tienda debe volver a mostrar las 10 unidades")
+	}
+	if got := stockDe(t, e.entorno, e.producto); got != 10 {
+		t.Errorf("stock físico = %v, quiero 10", got)
+	}
+	var movs int
+	e.Conn.QueryRow(`SELECT count(*) FROM movimientos_inventario WHERE pedido_id = $1`, id).Scan(&movs)
+	if movs != 0 {
+		t.Errorf("hay %d movimientos del pedido, quiero 0", movs)
+	}
+
+	// Aviso al cliente.
+	m := e.esperaCorreo(t)
+	if m.Para[0] != "ana@ejemplo.com" || !strings.Contains(m.Asunto, "fue cancelado") || !strings.Contains(m.Texto, "El cliente pidió cancelar") {
+		t.Errorf("correo de cancelación incorrecto: %v %q\n%s", m.Para, m.Asunto, m.Texto)
+	}
+
+	// El detalle lo explica, sin pedir reembolso.
+	_, body = admin.get(ruta + "?r=cancelado_liberado")
+	for _, quiero := range []string{"Pedido cancelado", "antes de pagarse", "no hay nada que reembolsar", "Se liberó la reserva"} {
+		if !strings.Contains(body, quiero) {
+			t.Errorf("el detalle no muestra %q", quiero)
+		}
+	}
+	if strings.Contains(body, "Falta devolver") || strings.Contains(body, "Actualizar estado") {
+		t.Error("un pedido cancelado sin pago no debe pedir reembolso ni permitir cambiar su estado")
+	}
+
+	// El cliente ve que se canceló y ya no puede subir comprobantes.
+	if _, body := cli.get("/pedido/" + token); !strings.Contains(body, "fue cancelado") || strings.Contains(body, "Enviar comprobante") {
+		t.Error("la página del cliente debe decir que el pedido fue cancelado")
+	}
+	if resp, _ := cli.subeComprobante(token, camposComprobante("BOL-12345"), imagenPNG(t)); resp.StatusCode != http.StatusConflict {
+		t.Errorf("subir tras cancelar: %d, quiero 409", resp.StatusCode)
+	}
+	// Definitivo.
+	if resp, _ := admin.post(cancelar, url.Values{"csrf": {csrf}}); resp.StatusCode != http.StatusConflict {
+		t.Errorf("segunda cancelación: %d, quiero 409", resp.StatusCode)
 	}
 }

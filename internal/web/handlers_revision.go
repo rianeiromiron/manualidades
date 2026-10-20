@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 
@@ -22,6 +23,7 @@ import (
 // un código en la dirección (?r=...) y nunca como texto, para que nadie pueda
 // hacer que la página muestre un mensaje cualquiera.
 var mensajesRevision = map[string]string{
+	"cancelado_liberado":     "Pedido cancelado. Se liberó la reserva de sus productos y se avisó al cliente por correo.",
 	"cancelado_devuelto":     "Pedido cancelado. Sus productos volvieron al inventario.",
 	"cancelado_sin_devolver": "Pedido cancelado. El inventario no se tocó porque el producto no volvió a bodega.",
 	"reembolsado":            "Reembolso anotado.",
@@ -273,6 +275,14 @@ func (a *App) PedidoCancelar(w http.ResponseWriter, r *http.Request) {
 		volvio = &v
 	}
 
+	// Motivo opcional, solo para el aviso al cliente cuando se cancela un pedido
+	// que aún no se había pagado.
+	motivo := strings.TrimSpace(r.FormValue("motivo"))
+	if utf8.RuneCountInString(motivo) > 255 || !campoSimple(motivo, 255) {
+		a.renderPedidoDetalle(w, r, conn, id, "El motivo es demasiado largo o tiene saltos de línea.", "error", http.StatusBadRequest)
+		return
+	}
+
 	quien := quienCambia(r)
 	res, err := tienda.CancelarPedido(conn, id, volvio, quien.Usuario, time.Now())
 	switch {
@@ -283,7 +293,7 @@ func (a *App) PedidoCancelar(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, tienda.ErrFaltaDecisionDeInventario):
 		a.renderPedidoDetalle(w, r, conn, id, "Indica si el producto volvió a bodega para poder cancelar el pedido entregado.", "error", http.StatusBadRequest)
 		return
-	case errors.Is(err, tienda.ErrPedidoCancelado), errors.Is(err, tienda.ErrNoSePuedeCancelar):
+	case errors.Is(err, tienda.ErrPedidoCancelado), errors.Is(err, tienda.ErrNoSePuedeCancelar), errors.Is(err, tienda.ErrEnRevision):
 		a.renderPedidoDetalle(w, r, conn, id, "No se pudo cancelar: "+err.Error()+".", "error", http.StatusConflict)
 		return
 	default:
@@ -295,7 +305,15 @@ func (a *App) PedidoCancelar(w http.ResponseWriter, r *http.Request) {
 	log.Printf("pedidos: pedido %d cancelado por %q desde %s (inventario devuelto: %v, reembolso pendiente: Q%.2f)",
 		id, quien.Usuario, quien.IP, res.InventarioDevuelto, res.ReembolsoPendiente)
 	codigo := "cancelado_sin_devolver"
-	if res.InventarioDevuelto {
+	switch {
+	case res.ReservaLiberada:
+		codigo = "cancelado_liberado"
+		// El cliente no había pagado: se le avisa que su pedido se canceló.
+		if p, err := tienda.GetPedido(conn, id); err == nil && p.ClienteEmail != "" {
+			cfg, _ := correo.Load()
+			a.enviarCorreo(cfg, correoPedidoCancelado(p, motivo))
+		}
+	case res.InventarioDevuelto:
 		codigo = "cancelado_devuelto"
 	}
 	http.Redirect(w, r, "/admin/pedidos/"+strconv.Itoa(id)+"?r="+codigo, http.StatusSeeOther)

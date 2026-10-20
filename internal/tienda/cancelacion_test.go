@@ -146,17 +146,15 @@ func TestCancelarUnPedidoEntregadoPreguntaSiElProductoVolvio(t *testing.T) {
 	}
 }
 
-func TestSoloSeCancelaUnPedidoPagado(t *testing.T) {
+func TestNoSePuedeCancelarUnPedidoCobrandoNiVencido(t *testing.T) {
 	conn := nuevaBase(t)
 	p := nuevoProducto(t, conn, "Taza", 10)
 
 	tarjeta, _ := IniciarPago(conn, "", datos(), []LineaPedido{linea(p, 1)}, 10)
-	espera := nuevaTransferencia(t, conn, p, "a@ejemplo.com")
-	enRevision, _ := pedidoEnRevision(t, conn, p, "b@ejemplo.com", "BOL-12345")
 	vencido := nuevaTransferencia(t, conn, p, "c@ejemplo.com")
 	conn.Exec(`UPDATE pedidos SET estado = 'expirado', expira_en = NULL WHERE id = $1`, vencido.PedidoID)
 
-	for nombre, id := range map[string]int{"cobrando": tarjeta.PedidoID, "esperando": espera.PedidoID, "en revisión": enRevision, "vencido": vencido.PedidoID} {
+	for nombre, id := range map[string]int{"cobrando": tarjeta.PedidoID, "vencido": vencido.PedidoID} {
 		antes := estadoPedido(t, conn, id)
 		if _, err := CancelarPedido(conn, id, nil, "silvia", time.Now()); !errors.Is(err, ErrNoSePuedeCancelar) {
 			t.Errorf("%s: err = %v, quiero ErrNoSePuedeCancelar", nombre, err)
@@ -273,5 +271,112 @@ func TestCancelarVariosProductosDevuelveCadaUno(t *testing.T) {
 	}
 	if stockFisico(t, conn, a) != 5 || stockFisico(t, conn, b) != 7 {
 		t.Errorf("stocks = %v y %v, quiero 5 y 7", stockFisico(t, conn, a), stockFisico(t, conn, b))
+	}
+}
+
+func TestCancelarUnPedidoQueEsperaTransferenciaSoloSueltaLaReserva(t *testing.T) {
+	conn := nuevaBase(t)
+	p := nuevoProducto(t, conn, "Taza", 5)
+	tr := nuevaTransferencia(t, conn, p, "ana@ejemplo.com")
+	if got := reservado(t, conn, p); got != 1 {
+		t.Fatalf("reservado antes = %v, quiero 1", got)
+	}
+
+	res, err := CancelarPedido(conn, tr.PedidoID, nil, "silvia", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.ReservaLiberada || res.InventarioDevuelto || res.ReembolsoPendiente != 0 {
+		t.Errorf("resultado = %+v, quiero solo reserva liberada", res)
+	}
+	if got := estadoPedido(t, conn, tr.PedidoID); got != EstadoCancelado {
+		t.Errorf("estado = %q, quiero cancelado", got)
+	}
+	if got := reservado(t, conn, p); got != 0 {
+		t.Errorf("reservado = %v, quiero 0 (la reserva se liberó)", got)
+	}
+	if got := stockFisico(t, conn, p); got != 5 {
+		t.Errorf("stock físico = %v, quiero 5 (nunca salió nada)", got)
+	}
+	if n := contar(t, conn, `SELECT count(*) FROM movimientos_inventario WHERE pedido_id = $1`, tr.PedidoID); n != 0 {
+		t.Errorf("hay %d movimientos del pedido, quiero 0", n)
+	}
+	var sinFecha bool
+	conn.QueryRow(`SELECT expira_en IS NULL FROM pedidos WHERE id = $1`, tr.PedidoID).Scan(&sinFecha)
+	if !sinFecha {
+		t.Error("un pedido cancelado no debe conservar expira_en")
+	}
+	c, err := GetCancelacion(conn, tr.PedidoID)
+	if err != nil || c.Por != "silvia" || c.En == nil || !c.SinPago {
+		t.Errorf("cancelación = %+v, %v", c, err)
+	}
+	// Sin dinero de por medio no hay reembolso que anotar.
+	if err := MarcarReembolsado(conn, tr.PedidoID, "silvia"); !errors.Is(err, ErrSinReembolsoPendiente) {
+		t.Errorf("reembolso: err = %v, quiero ErrSinReembolsoPendiente", err)
+	}
+	// Es definitivo, y el cliente ya no puede subir un comprobante.
+	if _, err := CancelarPedido(conn, tr.PedidoID, nil, "silvia", time.Now()); !errors.Is(err, ErrPedidoCancelado) {
+		t.Errorf("segunda cancelación: err = %v", err)
+	}
+	if _, err := RegistrarComprobante(conn, tr.PedidoID, "x.jpg", datosCompr("BOL-55555"), ahora); !errors.Is(err, ErrPedidoNoAceptaComprobante) {
+		t.Errorf("subir tras cancelar: err = %v, quiero ErrPedidoNoAceptaComprobante", err)
+	}
+	// Otro cliente ya puede comprar esa unidad.
+	if _, err := IniciarPago(conn, "", datos(), []LineaPedido{linea(p, 5)}, 50); err != nil {
+		t.Errorf("tras liberar, el stock completo debe poder reservarse: %v", err)
+	}
+}
+
+func TestCancelarUnPedidoEnRevisionPideRechazarElComprobante(t *testing.T) {
+	conn := nuevaBase(t)
+	p := nuevoProducto(t, conn, "Taza", 5)
+	pedido, _ := pedidoEnRevision(t, conn, p, "ana@ejemplo.com", "BOL-12345")
+	if _, err := CancelarPedido(conn, pedido, nil, "silvia", time.Now()); !errors.Is(err, ErrEnRevision) {
+		t.Fatalf("err = %v, quiero ErrEnRevision", err)
+	}
+	if got := estadoPedido(t, conn, pedido); got != EstadoTransferenciaPorRevisar {
+		t.Errorf("estado = %q: el comprobante sigue sin revisar", got)
+	}
+}
+
+// Si el cliente sube su comprobante justo cuando se cancela, solo una de las dos
+// cosas ocurre y el pedido queda coherente.
+func TestSubirComprobanteYCancelarAlMismoTiempo(t *testing.T) {
+	for i := 0; i < 5; i++ {
+		conn := nuevaBase(t)
+		conn.SetMaxOpenConns(10)
+		p := nuevoProducto(t, conn, "Taza", 5)
+		tr := nuevaTransferencia(t, conn, p, "ana@ejemplo.com")
+
+		var errSubir, errCancelar error
+		var wg sync.WaitGroup
+		arranque := make(chan struct{})
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-arranque
+			_, errSubir = RegistrarComprobante(conn, tr.PedidoID, "x.jpg", datosCompr("BOL-12345"), ahora)
+		}()
+		go func() {
+			defer wg.Done()
+			<-arranque
+			_, errCancelar = CancelarPedido(conn, tr.PedidoID, nil, "silvia", time.Now())
+		}()
+		close(arranque)
+		wg.Wait()
+
+		estado := estadoPedido(t, conn, tr.PedidoID)
+		switch {
+		case errSubir == nil && errors.Is(errCancelar, ErrEnRevision):
+			if estado != EstadoTransferenciaPorRevisar {
+				t.Fatalf("ganó la subida, pero el estado es %q", estado)
+			}
+		case errCancelar == nil && errors.Is(errSubir, ErrPedidoNoAceptaComprobante):
+			if estado != EstadoCancelado || filasComprobantes(t, conn, tr.PedidoID) != 0 {
+				t.Fatalf("ganó la cancelación, pero estado %q y comprobantes %d", estado, filasComprobantes(t, conn, tr.PedidoID))
+			}
+		default:
+			t.Fatalf("resultado incoherente: subir = %v, cancelar = %v, estado %q", errSubir, errCancelar, estado)
+		}
 	}
 }

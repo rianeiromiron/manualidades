@@ -99,7 +99,8 @@
 <section class="panel panel-narrow">
   <h3>Pedido cancelado</h3>
   <p>{{if .Cancelacion.En}}Cancelado el {{localtime .Cancelacion.En "02/01/2006 15:04"}}{{if .Cancelacion.Por}} por {{.Cancelacion.Por}}{{end}}.{{else}}Este pedido se canceló antes de que el sistema registrara quién y cuándo.{{end}}
-    {{if .Cancelacion.InventarioDevuelto}}Sus productos volvieron al inventario.{{else}}Su inventario no se devolvió.{{end}}
+    {{if .Cancelacion.SinPago}}Se canceló antes de pagarse: se liberó la reserva de sus productos y no hay nada que reembolsar.
+    {{else if .Cancelacion.InventarioDevuelto}}Sus productos volvieron al inventario.{{else}}Su inventario no se devolvió.{{end}}
     Un pedido cancelado no se puede reabrir: si el cliente aún lo quiere, haz un pedido nuevo.</p>
 </section>
 {{else if .Pedido.EsReal}}
@@ -143,6 +144,23 @@
       </select>
     </label>
     {{end}}
+    <div class="form-actions">
+      <button type="submit" class="btn btn-ghost link-danger">Cancelar pedido</button>
+    </div>
+  </form>
+</section>
+{{else if eq .Pedido.Estado "espera_transferencia"}}
+<section class="panel panel-narrow">
+  <h3>Cancelar pedido</h3>
+  <p>El cliente todavía no ha subido su comprobante. Al cancelar, se libera la reserva de sus productos y no hay nada que
+    reembolsar. <strong>No se puede deshacer.</strong></p>
+  <form method="post" action="/admin/pedidos/{{.Pedido.ID}}/cancelar" class="form-grid"
+        data-confirm="¿Cancelar el pedido #{{.Pedido.ID}}? Se liberará la reserva de sus productos. No se puede deshacer.">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="span-2">
+      <span>Motivo (opcional; el cliente lo verá en el correo)</span>
+      <input type="text" name="motivo" maxlength="255" placeholder="Ej. El cliente pidió cancelar">
+    </label>
     <div class="form-actions">
       <button type="submit" class="btn btn-ghost link-danger">Cancelar pedido</button>
     </div>

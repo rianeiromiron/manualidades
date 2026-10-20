@@ -103,6 +103,25 @@ Revísala en tu banca en línea (busca el monto y la boleta) y luego apruébala 
 	}
 }
 
+// correoPedidoCancelado avisa al cliente que su pedido, que aún no se había
+// pagado, fue cancelado por la tienda.
+func correoPedidoCancelado(p tienda.Pedido, motivo string) correo.Mensaje {
+	razon := ""
+	if motivo != "" {
+		razon = "\nMotivo: " + motivo + "\n"
+	}
+	return correo.Mensaje{
+		Para:   []string{p.ClienteEmail},
+		Asunto: fmt.Sprintf("Tu pedido #%d fue cancelado", p.ID),
+		Texto: fmt.Sprintf(`Hola %s,
+
+Cancelamos tu pedido #%d, que todavía no se había pagado. Los productos volvieron a estar disponibles.
+%s
+Si ya hiciste una transferencia o quieres volver a pedir, comunícate con la tienda y ten a mano tu comprobante.
+`, p.ClienteNombre, p.ID, razon),
+	}
+}
+
 // correoTransferenciaAprobada confirma al cliente que su pago se verificó.
 func correoTransferenciaAprobada(p tienda.Pedido, enlace string) correo.Mensaje {
 	entrega := "Puedes pasar a recogerlo a la tienda cuando te avisemos que está listo."

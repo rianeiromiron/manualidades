@@ -81,6 +81,8 @@ func NewRouter(app *App) http.Handler {
 	cuentasR.Use(app.RequireModule("cuentas"))
 	cuentasR.HandleFunc("", app.CuentasList).Methods(http.MethodGet)
 	cuentasR.HandleFunc("", app.CuentaCrear).Methods(http.MethodPost)
+	cuentasR.HandleFunc("/formas-pago/{clave}/activar", app.FormaPagoActivar).Methods(http.MethodPost)
+	cuentasR.HandleFunc("/formas-pago/{clave}/desactivar", app.FormaPagoDesactivar).Methods(http.MethodPost)
 	cuentasR.HandleFunc("/{id}/editar", app.CuentaEditar).Methods(http.MethodGet, http.MethodPost)
 	cuentasR.HandleFunc("/{id}/activar", app.CuentaActivar).Methods(http.MethodPost)
 	cuentasR.HandleFunc("/{id}/desactivar", app.CuentaDesactivar).Methods(http.MethodPost)

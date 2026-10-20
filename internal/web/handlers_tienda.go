@@ -222,19 +222,54 @@ func (a *App) TiendaCarrito(w http.ResponseWriter, r *http.Request) {
 	a.renderTienda(w, "tienda_carrito.html", map[string]any{"Title": "Carrito"})
 }
 
+// formasPagoDisponibles son las formas de pago que hoy se pueden usar para crear
+// un pedido. Una forma de pago está disponible si el admin la tiene activada y,
+// en el caso de la transferencia, además hay al menos una cuenta bancaria activa
+// a la que transferir.
+type formasPagoDisponibles struct {
+	Tarjeta, Transferencia bool
+}
+
+func (f formasPagoDisponibles) Ninguna() bool { return !f.Tarjeta && !f.Transferencia }
+func (f formasPagoDisponibles) Varias() bool  { return f.Tarjeta && f.Transferencia }
+
+func leerFormasPago(conn *sql.DB) (formasPagoDisponibles, error) {
+	var f formasPagoDisponibles
+	var err error
+	if f.Tarjeta, err = sitio.FormaPagoActiva(conn, sitio.FormaTarjeta); err != nil {
+		return f, err
+	}
+	if f.Transferencia, err = sitio.FormaPagoActiva(conn, sitio.FormaTransferencia); err != nil {
+		return f, err
+	}
+	if f.Transferencia {
+		activas, err := cuentas.ListActivas(conn)
+		if err != nil {
+			return f, err
+		}
+		f.Transferencia = len(activas) > 0
+	}
+	return f, nil
+}
+
 func (a *App) TiendaCheckout(w http.ResponseWriter, r *http.Request) {
 	conn := a.requireTiendaDB(w)
 	if conn == nil {
 		return
 	}
-	// La transferencia solo se ofrece si hay una cuenta a la que transferir.
-	activas, err := cuentas.ListActivas(conn)
+	formas, err := leerFormasPago(conn)
 	if err != nil {
-		log.Printf("checkout: leyendo cuentas bancarias: %v", err)
+		// Ante la duda no se ofrece nada: es más seguro que cobrar por un medio
+		// que el admin pudo haber desactivado.
+		log.Printf("checkout: leyendo las formas de pago: %v", err)
+		formas = formasPagoDisponibles{}
 	}
 	a.renderTienda(w, "tienda_checkout.html", map[string]any{
 		"Title":            "Checkout",
-		"HayTransferencia": len(activas) > 0,
+		"HayTarjeta":       formas.Tarjeta,
+		"HayTransferencia": formas.Transferencia,
+		"VariasFormas":     formas.Varias(),
+		"SinFormasPago":    formas.Ninguna(),
 	})
 }
 
@@ -310,6 +345,19 @@ func (a *App) TiendaCheckoutConfirmar(w http.ResponseWriter, r *http.Request) {
 	conn := a.DB()
 	if conn == nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": "Tienda no disponible."})
+		return
+	}
+
+	// Si el admin desactivó el pago con tarjeta no se acepta, aunque alguien
+	// arme la petición a mano.
+	formas, err := leerFormasPago(conn)
+	if err != nil {
+		log.Printf("tienda: leyendo las formas de pago: %v", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "No se pudo iniciar el pago. No se te cobró nada."})
+		return
+	}
+	if !formas.Tarjeta {
+		respondJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "El pago con tarjeta no está disponible por ahora."})
 		return
 	}
 

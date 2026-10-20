@@ -215,14 +215,24 @@ func (a *App) TiendaCheckoutTransferencia(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	formas, err := leerFormasPago(conn)
+	if err != nil {
+		log.Printf("transferencia: leyendo las formas de pago: %v", err)
+		errorJSON(w, http.StatusInternalServerError, "No se pudo crear el pedido. No se te cobró nada.")
+		return
+	}
+	if !formas.Transferencia {
+		msg := "El pago por transferencia no está disponible por ahora."
+		if formas.Tarjeta {
+			msg += " Puedes pagar con tarjeta."
+		}
+		errorJSON(w, http.StatusConflict, msg)
+		return
+	}
 	activas, err := cuentas.ListActivas(conn)
 	if err != nil {
 		log.Printf("transferencia: leyendo cuentas: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "No se pudo crear el pedido. No se te cobró nada.")
-		return
-	}
-	if len(activas) == 0 {
-		errorJSON(w, http.StatusConflict, "El pago por transferencia no está disponible por ahora. Puedes pagar con tarjeta.")
 		return
 	}
 	abiertas, err := tienda.TransferenciasAbiertas(conn, body.ClienteEmail)

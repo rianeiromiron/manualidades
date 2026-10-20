@@ -79,3 +79,60 @@ func TestMigrarNoReiniciaElCostoYAgregaElCampoAUnaBaseAntigua(t *testing.T) {
 		t.Fatalf("base antigua: costo = %v, err = %v; quiero 45", g.CostoEnvio, err)
 	}
 }
+
+func TestLasFormasDePagoNacenActivasYSePuedenCambiar(t *testing.T) {
+	conn := testdb.Nueva(t, Migrate)
+	lista, err := ListFormasPago(conn)
+	if err != nil || len(lista) != 2 || lista[0].Clave != FormaTarjeta || lista[1].Clave != FormaTransferencia {
+		t.Fatalf("formas = %+v, %v; quiero tarjeta y transferencia en ese orden", lista, err)
+	}
+	for _, f := range lista {
+		if !f.Activa || f.ActualizadoPor != "" || f.ActualizadoEn != nil {
+			t.Errorf("%s debe nacer activa y sin cambios: %+v", f.Clave, f)
+		}
+	}
+
+	if err := SetFormaPagoActiva(conn, FormaTarjeta, false, "silvia"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := FormaPagoActiva(conn, FormaTarjeta); ok {
+		t.Error("la tarjeta debía quedar desactivada")
+	}
+	if ok, _ := FormaPagoActiva(conn, FormaTransferencia); !ok {
+		t.Error("desactivar la tarjeta no debe tocar la transferencia")
+	}
+	lista, _ = ListFormasPago(conn)
+	if lista[0].ActualizadoPor != "silvia" || lista[0].ActualizadoEn == nil {
+		t.Errorf("debe quedar anotado quién y cuándo: %+v", lista[0])
+	}
+
+	// Migrar de nuevo no reactiva lo que se desactivó.
+	if err := Migrate(conn); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := FormaPagoActiva(conn, FormaTarjeta); ok {
+		t.Error("migrar de nuevo reactivó la tarjeta")
+	}
+
+	if err := SetFormaPagoActiva(conn, FormaTarjeta, true, "beto"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := FormaPagoActiva(conn, FormaTarjeta); !ok {
+		t.Error("la tarjeta debía volver a activarse")
+	}
+}
+
+func TestUnaFormaDePagoDesconocidaSeRechaza(t *testing.T) {
+	conn := testdb.Nueva(t, Migrate)
+	for _, clave := range []string{"efectivo", "", "TARJETA", "tarjeta' OR '1'='1"} {
+		if err := SetFormaPagoActiva(conn, clave, true, "silvia"); !errors.Is(err, ErrFormaPagoDesconocida) {
+			t.Errorf("%q: err = %v, quiero ErrFormaPagoDesconocida", clave, err)
+		}
+		if ok, err := FormaPagoActiva(conn, clave); ok || err != nil {
+			t.Errorf("%q: activa = %v, err = %v; una clave desconocida cuenta como desactivada", clave, ok, err)
+		}
+	}
+	if lista, _ := ListFormasPago(conn); len(lista) != 2 {
+		t.Errorf("hay %d formas de pago, quiero 2", len(lista))
+	}
+}

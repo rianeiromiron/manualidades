@@ -428,3 +428,5 @@ a.t-pag-num:hover { background: var(--t-acento-suave); }
   .t-pedido-grid { grid-template-columns: 1fr; }
 }
 .t-resumen-linea[hidden] { display: none; }
+.t-forma-pago[hidden] { display: none; }
+.t-sin-pagos { max-width: 560px; margin: 0 auto; }

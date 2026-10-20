@@ -1,7 +1,7 @@
 {{define "content"}}
 <section class="page-head">
   <p class="eyebrow">Tienda</p>
-  <h1>Cuentas bancarias</h1>
+  <h1>Formas de pago y cuentas bancarias</h1>
   <p class="lead">Cuentas a las que los clientes pueden hacer transferencias. Solo se
     ofrecen las que estén activas. Cada cambio queda registrado abajo.</p>
 </section>
@@ -11,6 +11,49 @@
 {{end}}
 
 <section class="panel">
+  <h3>Formas de pago</h3>
+  <p class="lead">Lo que la tienda ofrece hoy a los clientes. Desactivar una forma de pago solo impide crear pedidos
+    nuevos con ella: los pedidos ya hechos siguen su curso (por ejemplo, un cliente puede seguir subiendo el comprobante
+    de una transferencia que ya pidió).</p>
+  <table class="data-table">
+    <thead>
+      <tr><th>Forma de pago</th><th>Estado</th><th>Último cambio</th><th></th></tr>
+    </thead>
+    <tbody>
+      {{range .Formas}}
+      <tr>
+        <td class="cell-strong">{{.Nombre}}
+          {{if and (eq .Clave "transferencia") .Activa (not $.HayActivas)}}
+          <br><span class="cell-muted">Está activada, pero no hay ninguna cuenta bancaria activa: no se ofrecerá hasta que actives una.</span>
+          {{end}}
+        </td>
+        <td>
+          {{if .Activa}}<span class="estado-badge estado-entregado">Activa</span>
+          {{else}}<span class="estado-badge estado-cancelado">Desactivada</span>{{end}}
+        </td>
+        <td>{{if .ActualizadoEn}}{{.ActualizadoPor}} · {{localtime .ActualizadoEn "02/01/2006 15:04"}}{{else}}—{{end}}</td>
+        <td class="cell-actions">
+          {{if .Activa}}
+          <form method="post" action="/admin/cuentas/formas-pago/{{.Clave}}/desactivar"
+                data-confirm="¿Desactivar «{{.Nombre}}»? Los clientes ya no podrán hacer pedidos nuevos con esta forma de pago.">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action link-danger">Desactivar</button>
+          </form>
+          {{else}}
+          <form method="post" action="/admin/cuentas/formas-pago/{{.Clave}}/activar">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button type="submit" class="link-action">Activar</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h3>Cuentas bancarias</h3>
   {{if .Cuentas}}
   <table class="data-table">
     <thead>

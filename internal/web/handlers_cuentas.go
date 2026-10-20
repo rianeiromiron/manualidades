@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"manualidades/internal/cuentas"
+	"manualidades/internal/sitio"
 )
 
 const (
@@ -68,6 +69,16 @@ func (a *App) renderCuentas(w http.ResponseWriter, r *http.Request, conn *sql.DB
 		http.Error(w, "Error interno.", http.StatusInternalServerError)
 		return
 	}
+	formas, err := sitio.ListFormasPago(conn)
+	if err != nil {
+		log.Printf("cuentas: leyendo las formas de pago: %v", err)
+		http.Error(w, "Error interno.", http.StatusInternalServerError)
+		return
+	}
+	hayActivas := false
+	for _, c := range lista {
+		hayActivas = hayActivas || c.Activa
+	}
 	if form.TipoCuenta == "" {
 		form.TipoCuenta = cuentas.Tipos[0].Valor
 	}
@@ -78,6 +89,8 @@ func (a *App) renderCuentas(w http.ResponseWriter, r *http.Request, conn *sql.DB
 		"Title":       "Cuentas bancarias",
 		"Active":      "cuentas",
 		"Cuentas":     lista,
+		"Formas":      formas,
+		"HayActivas":  hayActivas,
 		"Historial":   historial,
 		"Form":        form,
 		"Tipos":       cuentas.Tipos,
@@ -182,6 +195,35 @@ func (a *App) cambiarEstadoCuenta(w http.ResponseWriter, r *http.Request, hacer 
 		return
 	}
 	http.Redirect(w, r, rutaCuentas, http.StatusSeeOther)
+}
+
+// cambiarFormaPago activa o desactiva una forma de pago de la tienda.
+func (a *App) cambiarFormaPago(w http.ResponseWriter, r *http.Request, activa bool) {
+	conn := a.requireDB(w, r, "cuentas")
+	if conn == nil {
+		return
+	}
+	clave := mux.Vars(r)["clave"]
+	quien := quienCambia(r)
+	switch err := sitio.SetFormaPagoActiva(conn, clave, activa, quien.Usuario); {
+	case err == nil:
+	case errors.Is(err, sitio.ErrFormaPagoDesconocida):
+		http.NotFound(w, r)
+		return
+	default:
+		log.Printf("cuentas: cambiando la forma de pago %q: %v", clave, err)
+		a.renderCuentas(w, r, conn, cuentas.Datos{}, mensajeCuentaErr, "error")
+		return
+	}
+	log.Printf("pagos: forma de pago %q %s por %q desde %s", clave, map[bool]string{true: "activada", false: "desactivada"}[activa], quien.Usuario, quien.IP)
+	http.Redirect(w, r, rutaCuentas, http.StatusSeeOther)
+}
+
+func (a *App) FormaPagoActivar(w http.ResponseWriter, r *http.Request) {
+	a.cambiarFormaPago(w, r, true)
+}
+func (a *App) FormaPagoDesactivar(w http.ResponseWriter, r *http.Request) {
+	a.cambiarFormaPago(w, r, false)
 }
 
 func (a *App) CuentaActivar(w http.ResponseWriter, r *http.Request) {

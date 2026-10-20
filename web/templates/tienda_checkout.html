@@ -3,6 +3,15 @@
   <h1>Checkout</h1>
 </section>
 
+{{if .SinFormasPago}}
+<div class="t-empty t-sin-pagos">
+  <p><strong>Por ahora no estamos recibiendo pagos en línea.</strong></p>
+  <p>Tus productos siguen en el carrito. Vuelve más tarde o comunícate con nosotros
+    {{if .Sitio.Telefono}}al {{.Sitio.Telefono}}{{end}}{{if and .Sitio.Telefono .Sitio.Email}} o {{end}}{{if .Sitio.Email}}escribiendo a {{.Sitio.Email}}{{end}}
+    para hacer tu pedido.</p>
+  <a href="/" class="t-btn t-btn-primary">Volver al catálogo</a>
+</div>
+{{else}}
 <div id="tCheckoutVacio" class="t-empty" hidden>
   <p>Tu carrito está vacío.</p>
   <a href="/" class="t-btn t-btn-primary">Ver catálogo</a>
@@ -42,12 +51,14 @@
       <textarea name="notas" rows="2"></textarea>
     </label>
 
-    {{if .HayTransferencia}}
-    <div class="span-2 t-forma-pago">
+    {{/* El selector solo muestra lo que está activo. Con una sola forma de pago no
+         hay nada que elegir: queda oculto, pero marcado, y el formulario la usa. */}}
+    <div class="span-2 t-forma-pago" {{if not .VariasFormas}}hidden{{end}}>
       <h3>Forma de pago</h3>
-      <label><input type="radio" name="metodo_pago" value="tarjeta" checked> Tarjeta de crédito</label>
-      <label><input type="radio" name="metodo_pago" value="transferencia"> Transferencia bancaria</label>
+      {{if .HayTarjeta}}<label><input type="radio" name="metodo_pago" value="tarjeta" checked> Tarjeta de crédito</label>{{end}}
+      {{if .HayTransferencia}}<label><input type="radio" name="metodo_pago" value="transferencia" {{if not .HayTarjeta}}checked{{end}}> Transferencia bancaria</label>{{end}}
     </div>
+    {{if .HayTransferencia}}
     <div class="span-2 t-transferencia-info" id="tTransferenciaInfo" hidden>
       <p>Al continuar verás las cuentas para transferir y podrás subir tu comprobante, ahora o más tarde.
         Te enviaremos un enlace a tu correo para volver a tu pedido. Guardamos tus productos por 48 horas.</p>
@@ -104,4 +115,5 @@
 </div>
 
 <script src="/static/js/tienda-checkout.js"></script>
+{{end}}
 {{end}}

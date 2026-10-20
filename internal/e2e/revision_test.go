@@ -246,3 +246,29 @@ func TestRevisionRechazarYVolverASubir(t *testing.T) {
 		t.Error("tras cancelar, la tienda debe volver a mostrar las 10 unidades")
 	}
 }
+
+// Las tablas del módulo de pedidos muestran el número de cada pedido, con un
+// enlace a su detalle, en todas sus secciones.
+func TestElListadoDePedidosMuestraElNumeroDePedido(t *testing.T) {
+	e := nuevoEntornoTransferencia(t, true)
+	admin := e.cliente()
+	admin.entraComoAdmin()
+	csrf := admin.csrf()
+
+	pagado := e.pedidoPagado(t, admin, csrf, "ana@ejemplo.com", "BOL-12345")
+	_, pendiente := e.pedidoConComprobante(t, e.cliente(), "bea@ejemplo.com", "BOL-67890", false)
+
+	_, body := admin.get("/admin/pedidos")
+	if !strings.Contains(body, "<th>Pedido</th>") {
+		t.Error("las tablas deben tener la columna Pedido")
+	}
+	for nombre, id := range map[string]int{"pedidos pagados": pagado, "pendientes de pago": pendiente} {
+		enlace := fmt.Sprintf(`<a href="/admin/pedidos/%d" class="link-action">#%d</a>`, id, id)
+		if !strings.Contains(body, enlace) {
+			t.Errorf("%s: falta el número de pedido #%d con su enlace", nombre, id)
+		}
+	}
+	if n := strings.Count(body, "<th>Pedido</th>"); n != 2 {
+		t.Errorf("hay %d columnas Pedido, quiero 2 (una por sección)", n)
+	}
+}

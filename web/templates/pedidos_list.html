@@ -21,11 +21,12 @@
   {{if .Pedidos}}
   <table class="data-table">
     <thead>
-      <tr><th>Fecha</th><th>Cliente</th><th>Entrega</th><th>Pago</th><th>Estado</th><th>Total</th><th></th></tr>
+      <tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Entrega</th><th>Pago</th><th>Estado</th><th>Total</th><th></th></tr>
     </thead>
     <tbody>
       {{range .Pedidos}}
       <tr>
+        <td class="cell-strong"><a href="/admin/pedidos/{{.ID}}" class="link-action">#{{.ID}}</a></td>
         <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
         <td>{{if eq .MetodoEntrega "domicilio"}}Domicilio{{else}}Recoger en tienda{{end}}</td>
@@ -57,11 +58,12 @@
   <p class="lead">Reservan stock, pero todavía no se pagan: no se despachan. Las transferencias con comprobante esperan tu revisión y no vencen.</p>
   <table class="data-table">
     <thead>
-      <tr><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Estado</th><th>Total</th><th>Reserva vence</th><th></th></tr>
+      <tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Estado</th><th>Total</th><th>Reserva vence</th><th></th></tr>
     </thead>
     <tbody>
       {{range .Pendientes}}
       <tr>
+        <td class="cell-strong"><a href="/admin/pedidos/{{.ID}}" class="link-action">#{{.ID}}</a></td>
         <td>{{localtime .CreadoEn "02/01/2006 15:04"}}</td>
         <td class="cell-strong">{{.ClienteNombre}}</td>
         <td>{{if eq .MetodoPago "transferencia"}}Transferencia{{else}}Tarjeta{{end}}</td>

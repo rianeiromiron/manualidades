@@ -626,6 +626,8 @@ code {
 .estado-cancelado { background: #FBE7E1; color: #A8461E; }
 .estado-pendiente_pago { background: #FCF1D9; color: #8C6A1F; }
 .estado-pagando { background: #E3ECF6; color: #2A5A8C; }
+.estado-espera_transferencia { background: #FCF1D9; color: #8C6A1F; }
+.estado-transferencia_por_revisar { background: #E3ECF6; color: #2A5A8C; }
 .estado-expirado { background: #EEE9E4; color: #6B625A; }
 
 .tag-venta {

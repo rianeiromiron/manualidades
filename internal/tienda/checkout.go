@@ -47,11 +47,16 @@ const (
 var (
 	sqlExpiraReserva = fmt.Sprintf("now() + interval '%d seconds'", int(TTLReserva.Seconds()))
 	sqlExpiraPagando = fmt.Sprintf("now() + interval '%d seconds'", int(TTLPagando.Seconds()))
+	// Ver TTLTransferencia en transferencia.go.
+	sqlExpiraTransferencia = fmt.Sprintf("now() + interval '%d seconds'", int(TTLTransferencia.Seconds()))
 )
 
 // sqlReservaVigente filtra (sobre un alias pe de pedidos) los pedidos que
-// hoy retienen stock.
-const sqlReservaVigente = `pe.estado IN ('pendiente_pago', 'pagando') AND pe.expira_en > now()`
+// hoy retienen stock: los que esperan o intentan el pago y todavía no vencen,
+// y los de transferencia con comprobante, que retienen hasta que el negocio
+// decida (no tienen vencimiento). Va entre paréntesis para poder combinarse.
+const sqlReservaVigente = `((pe.estado IN ('pendiente_pago', 'pagando', 'espera_transferencia') AND pe.expira_en > now())
+	OR pe.estado = 'transferencia_por_revisar')`
 
 var (
 	// ErrPedidoEnProceso: ya hay un cobro en curso para el pedido de este
@@ -178,18 +183,8 @@ func IniciarPago(conn *sql.DB, token string, datos DatosPedido, lineas []LineaPe
 	// Stock disponible = físico − lo que reservan otros pedidos. Se excluye
 	// el propio pedido si se reutiliza: su reserva anterior está por
 	// reemplazarse por la nueva.
-	for _, l := range lineas {
-		fisico, err := inventario.StockActual(tx, l.ProductoID)
-		if err != nil {
-			return Intento{}, err
-		}
-		reservado, err := reservadoPorOtros(tx, l.ProductoID, pedidoID)
-		if err != nil {
-			return Intento{}, err
-		}
-		if l.Cantidad > fisico-reservado {
-			return Intento{}, fmt.Errorf("%s: %w", l.Nombre, inventario.ErrStockInsuficiente)
-		}
+	if err := validarStockDisponible(tx, lineas, pedidoID); err != nil {
+		return Intento{}, err
 	}
 
 	nit := datos.ClienteNIT
@@ -227,14 +222,8 @@ func IniciarPago(conn *sql.DB, token string, datos DatosPedido, lineas []LineaPe
 		}
 	}
 
-	for _, l := range lineas {
-		if _, err := tx.Exec(
-			`INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			pedidoID, l.ProductoID, l.Nombre, l.Cantidad, l.PrecioUnitario, l.Subtotal,
-		); err != nil {
-			return Intento{}, err
-		}
+	if err := insertarLineas(tx, pedidoID, lineas); err != nil {
+		return Intento{}, err
 	}
 
 	pagoID, err := iniciarPago(tx, pedidoID, MetodoTarjeta, total)
@@ -246,6 +235,40 @@ func IniciarPago(conn *sql.DB, token string, datos DatosPedido, lineas []LineaPe
 		return Intento{}, err
 	}
 	return Intento{PedidoID: pedidoID, PagoID: pagoID, Token: token}, nil
+}
+
+// validarStockDisponible comprueba, con los productos ya bloqueados, que cada
+// línea cabe en el stock disponible: físico − lo que reservan otros pedidos
+// (excluirPedidoID = 0 para no excluir ninguno). Si no alcanza, devuelve un
+// error que envuelve a inventario.ErrStockInsuficiente.
+func validarStockDisponible(tx *sql.Tx, lineas []LineaPedido, excluirPedidoID int) error {
+	for _, l := range lineas {
+		fisico, err := inventario.StockActual(tx, l.ProductoID)
+		if err != nil {
+			return err
+		}
+		reservado, err := reservadoPorOtros(tx, l.ProductoID, excluirPedidoID)
+		if err != nil {
+			return err
+		}
+		if l.Cantidad > fisico-reservado {
+			return fmt.Errorf("%s: %w", l.Nombre, inventario.ErrStockInsuficiente)
+		}
+	}
+	return nil
+}
+
+func insertarLineas(tx *sql.Tx, pedidoID int, lineas []LineaPedido) error {
+	for _, l := range lineas {
+		if _, err := tx.Exec(
+			`INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			pedidoID, l.ProductoID, l.Nombre, l.Cantidad, l.PrecioUnitario, l.Subtotal,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ConfirmarPago es el paso 3 cuando la pasarela aprobó el cobro: en una sola
@@ -404,8 +427,8 @@ func LimpiarExpirados(conn *sql.DB) (int, error) {
 
 	res, err := tx.Exec(
 		`UPDATE pedidos SET estado = $1, expira_en = NULL
-		 WHERE estado IN ($2, $3) AND expira_en < now()`,
-		EstadoExpirado, EstadoPendientePago, EstadoPagando,
+		 WHERE estado IN ($2, $3, $4) AND expira_en < now()`,
+		EstadoExpirado, EstadoPendientePago, EstadoPagando, EstadoEsperaTransferencia,
 	)
 	if err != nil {
 		return 0, err

@@ -11,6 +11,8 @@
       {{else if eq .Pedido.Estado "pendiente_pago"}}Pendiente de pago
       {{else if eq .Pedido.Estado "pagando"}}Cobrando
       {{else if eq .Pedido.Estado "expirado"}}Expirado (sin pago)
+      {{else if eq .Pedido.Estado "espera_transferencia"}}Esperando transferencia
+      {{else if eq .Pedido.Estado "transferencia_por_revisar"}}Transferencia por revisar
       {{else}}Pagado{{end}}
     </span>
   </p>

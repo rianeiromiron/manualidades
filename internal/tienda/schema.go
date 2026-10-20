@@ -68,7 +68,12 @@ const alterPedidos = `
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS expira_en TIMESTAMPTZ;
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS token VARCHAR(64);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_token ON pedidos(token) WHERE token IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_pedidos_reserva ON pedidos(estado, expira_en) WHERE estado IN ('pendiente_pago', 'pagando');
+-- 'transferencia_por_revisar' mide 25 caracteres. Ampliar un VARCHAR no
+-- reescribe la tabla.
+ALTER TABLE pedidos ALTER COLUMN estado TYPE VARCHAR(30);
+DROP INDEX IF EXISTS idx_pedidos_reserva;
+CREATE INDEX IF NOT EXISTS idx_pedidos_reserva_v2 ON pedidos(estado, expira_en)
+	WHERE estado IN ('pendiente_pago', 'pagando', 'espera_transferencia', 'transferencia_por_revisar');
 `
 
 // Migrate crea las tablas de pedidos si todavía no existen, y actualiza el

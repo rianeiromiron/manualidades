@@ -453,7 +453,8 @@ func (a *App) TiendaConfirmacion(w http.ResponseWriter, r *http.Request) {
 	// Un pedido que aún no está pagado (o que expiró) no tiene confirmación
 	// que mostrar.
 	switch pedido.Estado {
-	case tienda.EstadoPendientePago, tienda.EstadoPagando, tienda.EstadoExpirado:
+	case tienda.EstadoPendientePago, tienda.EstadoPagando, tienda.EstadoExpirado,
+		tienda.EstadoEsperaTransferencia, tienda.EstadoTransferenciaPorRevisar:
 		http.NotFound(w, r)
 		return
 	}

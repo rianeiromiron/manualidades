@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -25,6 +26,13 @@ type ItemCarrito struct {
 //	      └── (pago rechazado o con falla: el cliente puede reintentar)
 //	pendiente_pago / pagando → expirado  (la reserva venció o se liberó)
 //
+// Pago por transferencia bancaria: el cliente puede tardar horas o días, así
+// que la reserva dura TTLTransferencia y, una vez que sube el comprobante, se
+// mantiene hasta que el negocio lo revise (no vence sola):
+//
+//	espera_transferencia → transferencia_por_revisar → pagado
+//	espera_transferencia → expirado  (venció el plazo sin comprobante)
+//
 // Logística (los maneja el admin, ver PedidosList/PedidoDetalle). Un pedido
 // pagado entra al kardex y de ahí en adelante solo cambia a mano:
 //
@@ -33,6 +41,10 @@ const (
 	EstadoPendientePago = "pendiente_pago"
 	EstadoPagando       = "pagando"
 	EstadoExpirado      = "expirado"
+
+	// Transferencia bancaria (ver el comentario de arriba).
+	EstadoEsperaTransferencia     = "espera_transferencia"
+	EstadoTransferenciaPorRevisar = "transferencia_por_revisar"
 
 	EstadoPagado     = "pagado"
 	EstadoProcesando = "procesando" // "procesando en bodega"
@@ -94,7 +106,8 @@ type Pedido struct {
 	Total            float64
 	CreadoEn         time.Time
 	// ExpiraEn solo tiene valor mientras el pedido reserva stock
-	// (pendiente_pago / pagando).
+	// (pendiente_pago / pagando / espera_transferencia); en
+	// transferencia_por_revisar la reserva sigue pero no vence, y vale NULL.
 	ExpiraEn *time.Time
 	Items    []PedidoItem
 }
@@ -184,7 +197,7 @@ func ListPedidosPendientes(conn *sql.DB) ([]Pedido, error) {
 		`SELECT id, cliente_nombre, cliente_telefono, cliente_email, cliente_nit,
 			metodo_entrega, direccion_entrega, notas, estado, total, creado_en, expira_en
 		 FROM pedidos
-		 WHERE estado IN ('pendiente_pago', 'pagando') AND expira_en > now()
+		 WHERE `+strings.ReplaceAll(sqlReservaVigente, "pe.", "")+`
 		 ORDER BY creado_en DESC`,
 	)
 }

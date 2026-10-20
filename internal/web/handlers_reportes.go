@@ -514,6 +514,8 @@ func (a *App) ReporteStock(w http.ResponseWriter, r *http.Request) {
 var estadosPedido = []struct{ Clave, Nombre, Color string }{
 	{"pendiente_pago", "Pendiente de pago", colorOro},
 	{"pagando", "Cobrando", colorOro},
+	{"espera_transferencia", "Esperando transferencia", colorOro},
+	{"transferencia_por_revisar", "Transferencia por revisar", colorOro},
 	{"expirado", "Expirado", colorTinta},
 	{"pagado", "Pagado", colorSalvia},
 	{"procesando", "Procesando en bodega", colorSalvia},

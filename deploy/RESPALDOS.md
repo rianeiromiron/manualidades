@@ -7,8 +7,11 @@ noche a las 02:00 de Guatemala (08:00 UTC) en el servidor.
 
 - Volcado de la base de datos (`pg_dump`, formato custom).
 - Las fotos: `/opt/manualidades/media`.
-- `admin.json` (usuario admin y llave de sesiones) y `config.json` (acceso a
-  Postgres).
+- Los comprobantes de transferencia (imágenes que suben los clientes):
+  `/opt/manualidades/comprobantes`. Esa carpeta existe desde el primer
+  comprobante; mientras no haya ninguno, el respaldo la omite sin error.
+- `admin.json` (usuario admin y llave de sesiones), `config.json` (acceso a
+  Postgres) y `smtp.json` (servidor de correo saliente, solo si se configuró).
 
 Historial: 7 copias diarias, 4 semanales y 6 mensuales.
 
@@ -135,11 +138,17 @@ nunca se ha restaurado no es una garantía.
 
    ```bash
    sudo rsync -a /var/tmp/restaurar/opt/manualidades/media/ /opt/manualidades/media/
+   # comprobantes/ solo existe si algún cliente subió un comprobante:
+   sudo rsync -a /var/tmp/restaurar/opt/manualidades/comprobantes/ /opt/manualidades/comprobantes/ 2>/dev/null || true
    sudo cp /var/tmp/restaurar/opt/manualidades/admin.json  /opt/manualidades/admin.json
    sudo cp /var/tmp/restaurar/opt/manualidades/config.json /opt/manualidades/config.json
+   # smtp.json solo existe si se configuró el correo saliente:
+   sudo cp /var/tmp/restaurar/opt/manualidades/smtp.json /opt/manualidades/smtp.json 2>/dev/null || true
    sudo chown -R manualidades:manualidades /opt/manualidades/media \
         /opt/manualidades/admin.json /opt/manualidades/config.json
    sudo chmod 600 /opt/manualidades/admin.json /opt/manualidades/config.json
+   sudo chown manualidades:manualidades /opt/manualidades/smtp.json 2>/dev/null && sudo chmod 600 /opt/manualidades/smtp.json || true
+   sudo chown -R manualidades:manualidades /opt/manualidades/comprobantes 2>/dev/null || true
    ```
 
 5. Arrancar la app: `sudo systemctl start manualidades` y borrar

@@ -5,12 +5,35 @@ monederos y artículos típicos tejidos a mano). Un solo binario en Go sirve
 tanto el **panel de administración** como la **tienda pública**, contra una
 base de datos Postgres.
 
+Hoy la tienda vende por **transferencia bancaria**: el cliente transfiere, sube
+su comprobante y el negocio lo revisa y lo aprueba desde el admin. El cobro con
+**tarjeta** está construido contra una pasarela *simulada*; se activa o
+desactiva desde el panel (Bancos → Formas de pago) mientras llega la pasarela
+real de un banco.
+
 No usa ningún framework de frontend: las páginas se renderizan del lado del
 servidor con `html/template`, y el JavaScript que existe es vanilla,
 escrito a mano, y deliberadamente mínimo (filtros, un carrito en
-`localStorage`, y un par de formularios con campos condicionales). Todo vive
+`localStorage` con tope de stock, y formularios con campos condicionales). Todo vive
 en archivos de `web/static/js/`: las plantillas no llevan `<script>` ni
 atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
+
+---
+
+## Dónde encontrar cada cosa
+
+| Si quieres saber… | Mira |
+|---|---|
+| Qué está hecho y qué falta | [Estado del proyecto](#estado-del-proyecto) y [Roadmap](#roadmap) |
+| Cómo levantarlo en tu máquina | [Cómo levantarlo localmente](#cómo-levantarlo-localmente) |
+| Cómo está armado por dentro (checkout, reservas, transferencia, revisión, cancelaciones, correo, seguridad, permisos) | [Arquitectura](#arquitectura) |
+| Dónde corre en producción y cómo se despliega y se respalda | [Producción](#producción) |
+| Qué guarda la base de datos | [Modelo de datos](#modelo-de-datos) |
+| Qué direcciones existen, en el admin y en la tienda | [Rutas](#rutas) |
+| Qué hace cada pantalla del admin | [Los mantenimientos, explicados](#los-mantenimientos-explicados) |
+| Cómo compra un cliente, con tarjeta o por transferencia | [La tienda pública](#la-tienda-pública) |
+| Cómo se prueba | [Pruebas](#pruebas) |
+| Por qué se hizo así, y qué límites tiene | [Decisiones de diseño](#decisiones-de-diseño-que-vale-la-pena-conocer) y [Limitaciones conocidas](#limitaciones-conocidas) |
 
 ---
 
@@ -20,16 +43,22 @@ atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 |---|---|---|
 | Mantenimiento 1 | Conexión a la base de datos (Postgres) | ✅ Hecho |
 | Mantenimiento 2 | Inventario: categorías, productos, fotos, kardex, reporte | ✅ Hecho |
-| Mantenimiento 3 | Configuración del sitio: datos del negocio, logo, colores | ✅ Hecho |
-| Tienda — Fase 1 | Catálogo, carrito, checkout con pago **simulado** | ✅ Hecho |
-| Estado del pedido | Pagado → Procesando en bodega / Entregado / Cancelado, manejado desde admin | ✅ Hecho |
+| Mantenimiento 3 | Configuración del sitio: datos del negocio, logo, colores y **costo de envío a domicilio** | ✅ Hecho |
+| Tienda — Fase 1 | Catálogo paginado (20 por página, filtro por categoría en el servidor), carrito con tope de stock y checkout con tarjeta (pago **simulado**) | ✅ Hecho |
+| Estado del pedido | Pagado → Procesando en bodega / Entregado, manejado desde admin; **Cancelar pedido** como acción propia | ✅ Hecho |
 | Reserva de stock | El checkout reserva el stock **antes** de cobrar (pedido `pendiente_pago`/`pagando`, con vencimiento) y solo descarga el kardex cuando el pago se aprueba | ✅ Hecho |
 | Seguridad del admin | Login con usuario/contraseña, todo `/admin/*` protegido, sesiones revocables, CSRF, límite de intentos, cabeceras y CSP estricta | ✅ Hecho |
 | Usuarios y permisos | Superusuarios y usuarios administrativos con módulos asignables | ✅ Hecho |
 | Pasarela de pago | Registro de pagos (tabla `pagos`) + pasarela simulada (`pasarela-simulada`) con 3 modos: aprobar/rechazar/fallar | ✅ Hecho (simulada) |
+| Pago por transferencia | Pedido que reserva stock 48 h, página privada con enlace por token, subida del comprobante (con monto), cambiar la entrega o cancelar, "Consultar mi pedido" y avisos por correo | ✅ Hecho |
+| Revisión de transferencias | En `/admin/pedidos/{id}`: ver el comprobante, comparar el monto indicado con el total, aprobar (descuenta el inventario) o rechazar con un motivo | ✅ Hecho |
+| Cancelaciones y reembolsos | Cancelar un pedido pagado devuelve el inventario (anulando sus salidas del kardex) y deja el reembolso pendiente de anotar | ✅ Hecho |
+| Cuentas bancarias y formas de pago | Cuentas a las que se puede transferir (con historial de cambios) y activar/desactivar Tarjeta y Transferencia desde el admin | ✅ Hecho |
+| Correo saliente | Servidor SMTP configurable (STARTTLS/SSL, p. ej. Gmail), correos de aviso y botón de prueba | ✅ Hecho |
+| Reportes | Ventas, productos, utilidad, stock, pedidos y movimientos, con gráficos | ✅ Hecho |
 | Despliegue | Servidor propio gratuito (Oracle Cloud) detrás de Cloudflare, respaldos cifrados diarios (con copia en Backblaze B2) y script de despliegue con reversión automática; tienda de prueba en `prueba.manualidadescristal.com` (ver [Producción](#producción)) | ✅ Hecho |
 | Tienda — Fase 2 | Preparación de pedidos en bodega (flujo de picking/empaque) | ⬜ Pendiente (estados ya modelados) |
-| Tienda — Fase 3 | Pasarela de pago real | ⬜ Pendiente (el punto de reemplazo ya está aislado en `internal/pasarela`) |
+| Tienda — Fase 3 | Pasarela de pago real para la tarjeta (hoy desactivada en el servidor) | ⬜ Pendiente (el punto de reemplazo ya está aislado en `internal/pasarela`) |
 | Validación de NIT contra SAT | — | ⬜ Pendiente |
 
 ---
@@ -41,6 +70,7 @@ atributos de evento, para poder aplicar una CSP sin `'unsafe-inline'`.
 - **html/template** de la librería estándar — sin React/Vue/htmx
 - **JavaScript vanilla** — sin build step, sin npm, sin bundlers
 - **CSS puro** — variables CSS (`:root`) y `color-mix()` para temas derivados; sin Tailwind ni preprocesadores
+- **Correo saliente** — `net/smtp` de la librería estándar (STARTTLS o SSL); no suma dependencias
 
 Dependencias (`go.mod`):
 
@@ -82,15 +112,15 @@ github.com/chromedp/chromedp    (solo pruebas e2e con un navegador real)
    - Escribe `config.json` en la raíz del proyecto (con la contraseña en
      texto plano — está en `.gitignore`, nunca se sube a control de
      versiones).
-   - Corre automáticamente las migraciones de los 3 esquemas (inventario,
-     sitio, tienda) — son idempotentes, se puede reconectar cuantas veces
+   - Corre automáticamente las migraciones de todos los esquemas (inventario,
+     sitio, tienda, usuarios, sesiones y cuentas) — son idempotentes, se puede reconectar cuantas veces
      haga falta sin duplicar nada.
 
 5. **Ya está**: `http://localhost:8090/admin` es el panel de administración,
    `http://localhost:8090/` es la tienda pública (sin autenticación, como debe
    ser).
 
-6. **Pasarela de pago simulada** (necesaria para completar un checkout):
+6. **Pasarela de pago simulada** (solo para pagar con tarjeta; la transferencia no la necesita):
    es un proyecto hermano, `../pasarela-simulada` (su propio `go.mod`).
    ```bash
    cd ../pasarela-simulada
@@ -102,6 +132,21 @@ github.com/chromedp/chromedp    (solo pruebas e2e con un navegador real)
    proveedor no contestara). Arranca siempre en modo "Aprobar todo". Si no
    está corriendo, el checkout falla igual que si el proveedor real
    estuviera caído (es exactamente el mismo código que maneja ambos casos).
+
+7. **Probar el pago por transferencia** (no necesita la pasarela):
+   - En `/admin/cuentas` crea al menos una cuenta bancaria activa (una de
+     prueba); sin ella la transferencia no se ofrece en el checkout.
+   - Opcional: en `/admin/correo` configura un servidor SMTP (ver
+     [Correo saliente](#correo-saliente)). Sin él todo funciona igual, pero los
+     correos no se envían (queda anotado en el registro); el cliente ve su
+     enlace en pantalla.
+   - Haz un pedido eligiendo **Transferencia bancaria**, sube un comprobante
+     desde la página del pedido y apruébalo en `/admin/pedidos`.
+
+Archivos que la app crea o lee y que **no se suben a git** (`.gitignore`):
+`config.json` (Postgres), `admin.json` (admin raíz), `smtp.json` (correo
+saliente, con su contraseña), `media/` (fotos y logo) y `comprobantes/`
+(imágenes de las transferencias).
 
 No hace falta reiniciar el servidor para ver cambios en plantillas (`.html`)
 o estilos (`.css`) — se leen del disco en cada petición. Sí hace falta
@@ -118,9 +163,11 @@ compartidas por todos los handlers:
 
 ```go
 type App struct {
-	conn        *sql.DB           // protegido por mutex; puede cambiar en caliente
-	Storage     storage.Storage   // fotos de producto
-	LogoStorage storage.Storage   // logo del sitio
+	conn         *sql.DB           // protegido por mutex; puede cambiar en caliente
+	Storage      storage.Storage   // fotos de producto
+	LogoStorage  storage.Storage   // logo del sitio
+	Comprobantes storage.Storage   // imágenes de transferencias; carpeta privada (comprobantes/)
+	EnviarCorreo func(correo.Config, correo.Mensaje) error // nil = correo.Enviar; las pruebas lo reemplazan
 }
 ```
 
@@ -144,6 +191,11 @@ la pieza pensada para producción: si el hosting no tiene disco persistente,
 se agrega un `internal/storage/s3.go` que implemente la misma interfaz
 (Cloudflare R2 u otro S3-compatible) y no hay que tocar nada más — ni el
 resto de los handlers que ya usan `Storage`, ni las plantillas.
+
+Los comprobantes de transferencia usan la misma implementación `Local`, pero en
+una carpeta aparte (`comprobantes/`) que el router **no sirve**: solo el admin
+puede verlos, por una ruta protegida. `Local.Abrir` rechaza cualquier nombre que
+traiga carpetas o `..`.
 
 ### Pasarela de pago simulada
 
@@ -202,14 +254,26 @@ nunca pague por algo que ya no hay.
 **Estados de un pedido** (`internal/tienda/pedidos.go`):
 
 ```
-pendiente_pago ──► pagando ──► pagado ──► procesando ──► entregado (o cancelado)
-      ▲               │           └── desde aquí en adelante: manual, desde el admin
-      └── rechazo ────┘
-pendiente_pago / pagando ──► expirado   (la reserva venció o se liberó)
+Tarjeta:
+  pendiente_pago ──► pagando ──► pagado ──► procesando ──► entregado
+        ▲               │           └── desde aquí en adelante: manual, desde el admin
+        └── rechazo ────┘
+
+Transferencia:
+  espera_transferencia ──► transferencia_por_revisar ──► pagado ──► (igual que arriba)
+        │                          │
+        │                          ├── rechazar, pedir otro ──► espera_transferencia (48 h nuevas)
+        │                          └── rechazar y cancelar ───► expirado
+        └── cancela el cliente o el negocio ───────────────────► cancelado
+
+pendiente_pago / pagando / espera_transferencia ──► expirado   (la reserva venció o se liberó)
+pagado / procesando / entregado ──► cancelado                  (acción "Cancelar pedido", definitiva)
 ```
 
-Solo `pendiente_pago` y `pagando` **reservan stock**, y solo mientras
-`expira_en` no haya pasado. `pagado` en adelante ya está en el kardex.
+**Reservan stock:** `pendiente_pago` y `pagando` (hasta `expira_en`: 20 y 5
+minutos), `espera_transferencia` (48 horas) y `transferencia_por_revisar` (sin
+vencimiento: espera a que el negocio decida). `pagado` en adelante ya está en el
+kardex. Un pedido `cancelado` ya no reserva nada.
 
 **Reintento de pago.** Al crear el pedido se genera un `token` aleatorio
 (UUID) que el servidor manda en la cookie `pedido_token` (HttpOnly,
@@ -245,8 +309,10 @@ pago aún en `iniciado`), deja ese pago en `por_conciliar` porque no se sabe si
 la pasarela llegó a cobrar.
 
 **Qué ve el admin.** `/admin/pedidos` lista solo pedidos reales (pagados en
-adelante) y, aparte, los "Pendientes de pago" con la hora en que vence su
-reserva; bodega no ve ni puede cambiar de estado un pedido no pagado.
+adelante) y, aparte, los "Pendientes de pago" (tarjeta o transferencia, con la
+hora en que vence su reserva; las transferencias con comprobante esperan sin
+vencer). Cada tabla empieza con el número de pedido, que enlaza a su detalle.
+Bodega no ve ni puede cambiar de estado un pedido no pagado.
 `/admin/pedidos/pagos` muestra **todos** los intentos, incluidos los
 `rechazado`, `fallo`, `iniciado` y `por_conciliar`.
 
@@ -260,6 +326,184 @@ Esto es exactamente el punto que la Fase 3 original del proyecto (ver
 Roadmap) señalaba como "el único lugar a reemplazar por una pasarela real":
 hoy ya está aislado ahí, solo faltaría cambiar `pasarela.BaseURL()` por la
 URL de un proveedor de verdad.
+
+### Pago por transferencia bancaria
+
+Es la forma de vender mientras llega la pasarela real. El cliente transfiere por
+su cuenta y **sube la foto de su comprobante**; el negocio comprueba el depósito
+en su banco y lo aprueba. Código en `internal/tienda` (`transferencia.go`,
+`comprobantes.go`, `entrega.go`) y `internal/web/handlers_transferencia.go`.
+
+1. **Qué se ofrece.** El checkout solo muestra las formas de pago *disponibles*
+   (`leerFormasPago`): la tarjeta, si el admin la tiene activa; la transferencia,
+   si el admin la tiene activa **y** hay al menos una cuenta bancaria activa. Con
+   una sola no hay selector; con ninguna el checkout avisa que por ahora no se
+   reciben pagos en línea. El servidor lo exige también: `/checkout/confirmar` y
+   `/checkout/transferencia` responden `409` si la forma de pago no está
+   disponible, aunque la petición se arme a mano.
+2. **Crear el pedido** (`POST /checkout/transferencia`, JSON). Exige correo
+   válido (ahí llega el enlace), cotiza desde la base, calcula el envío en el
+   servidor y llama a `tienda.IniciarTransferencia`: igual que `IniciarPago`,
+   bloquea los productos y valida el stock disponible, pero deja el pedido en
+   `espera_transferencia` con una reserva de **48 horas** (`TTLTransferencia`),
+   sin tocar el kardex ni cobrar nada. Límites contra el acaparamiento de
+   inventario: 6 pedidos por hora por IP y 3 pedidos abiertos por correo.
+3. **Página privada del pedido** (`/pedido/{token}`). La llave es un UUID
+   aleatorio, no el `id` (que es secuencial); solo abre pedidos de
+   transferencia. Responde con `Cache-Control: no-store` y
+   `Referrer-Policy: no-referrer` (el token va en la dirección). Muestra las
+   cuentas activas, el monto exacto, el plazo y el formulario del comprobante.
+4. **El comprobante.** Imagen JPG, PNG o WebP de hasta 10 MB (se valida por su
+   contenido y se vuelve a codificar con `storage.NormalizarImagen`), más banco
+   de origen, número de boleta, fecha (no futura, de hasta 30 días atrás) y
+   **monto transferido**. Máximo 5 comprobantes por pedido. Una misma boleta de
+   un mismo banco no puede usarse en dos pedidos (índice único parcial; un
+   comprobante rechazado libera la suya). `RegistrarComprobante` corre en una
+   transacción con el pedido bloqueado: pasa el pedido a
+   `transferencia_por_revisar` y le quita el vencimiento — la reserva dura hasta
+   que el negocio decida. Si el monto no coincide con el total del pedido se
+   acepta (puede faltar un envío), pero se avisa al cliente, al negocio y en el
+   admin.
+5. **Mientras espera la transferencia**, el cliente puede **cambiar entre
+   recoger y domicilio** (`CambiarEntrega`: recalcula el monto; un pedido que ya
+   era a domicilio conserva el envío con que se creó; no extiende las 48 h) o
+   **cancelar su pedido** (`CancelarPorElCliente`: libera la reserva). Con el
+   comprobante ya subido ninguna de las dos cosas se puede: el monto debe
+   coincidir con lo transferido y la decisión es del negocio.
+6. **"Consultar mi pedido"** (`/consultar-pedido`): el cliente escribe número de
+   pedido y correo y, si coinciden, se le **reenvía el enlace a ese correo**. La
+   pantalla nunca muestra el pedido y responde siempre lo mismo (coincida o no),
+   para no revelar qué pedidos ni qué correos existen. Límites: 5 intentos en 15
+   minutos por IP y un reenvío cada 5 minutos por pedido.
+7. **Avisos por correo:** al cliente cuando crea el pedido, cambia la entrega, y
+   cuando el negocio aprueba o rechaza; al negocio (a los destinatarios
+   configurados) cuando entra un comprobante, con una advertencia si el monto no
+   coincide. Un fallo de correo solo se registra: no impide crear el pedido ni
+   subir el comprobante.
+
+**Los enlaces de los correos no salen de la petición.** La cabecera `Host` la
+controla quien hace el pedido: si el enlace se armara con ella, alguien podría
+crear un pedido con el correo de otra persona y mandarle un enlace a un sitio
+falso. Por eso salen de la **dirección pública de la tienda** configurada en
+`/admin/correo`. Sin ella (y fuera de localhost) no se manda ningún enlace por
+correo; el cliente igual lo ve en pantalla.
+
+### Revisión de transferencias en el admin
+
+En `/admin/pedidos/{id}` (módulo Pedidos) el detalle de un pedido por
+transferencia muestra cada comprobante con su imagen, la boleta, el banco, la
+fecha y el **monto indicado**, con una marca *≠ total* y un recuadro de
+advertencia si no coincide con el total del pedido. La lista de pedidos avisa
+cuántas transferencias hay por revisar.
+
+- **La imagen** se sirve por `/admin/pedidos/{id}/comprobantes/{cid}/archivo`,
+  solo a una sesión con acceso a Pedidos. Se busca por id en la base (no por un
+  nombre recibido) y se entrega con `X-Content-Type-Options: nosniff`,
+  `Cache-Control: private, no-store` y una CSP `default-src 'none'; sandbox`.
+- **Aprobar** (`tienda.AprobarTransferencia`) ocurre en **una transacción**:
+  bloquea los productos y el pedido, escribe un consumo por producto en el
+  kardex, registra el pago como `aprobado` con método `transferencia` (la
+  referencia es banco + boleta), marca el comprobante `aceptado` con quién y
+  cuándo, y pasa el pedido a `pagado`. Si el stock físico ya no alcanza, no
+  cambia nada y el pedido sigue en revisión. Se avisa al cliente por correo.
+- **Rechazar** exige un motivo (lo ve el cliente). Con *pedir otro comprobante*
+  el pedido vuelve a `espera_transferencia` con 48 horas nuevas; con *cancelar*
+  pasa a `expirado` y el stock vuelve a estar disponible. Se avisa por correo.
+- **Dos revisores a la vez:** solo gana uno; el otro recibe "ya fue revisado"
+  (el pedido se bloquea con `FOR UPDATE`).
+
+### Cancelaciones y reembolsos
+
+`tienda.ActualizarEstado` ya **no** permite cancelar: cancelar toca el
+inventario y el dinero, así que solo se hace con la acción **Cancelar pedido**
+(`tienda.CancelarPedido`), en una transacción y con confirmación:
+
+| Estado del pedido | Qué pasa al cancelar |
+|---|---|
+| `espera_transferencia` | Suelta la reserva. No hay inventario que devolver ni dinero que reembolsar. Motivo opcional y aviso por correo al cliente. |
+| `transferencia_por_revisar` | No se puede cancelar: hay un posible pago. Se resuelve rechazando el comprobante. |
+| `pagado` / `procesando` | Devuelve el inventario y deja el reembolso pendiente. |
+| `entregado` | Pregunta si el producto volvió a bodega; solo entonces devuelve el inventario. Deja el reembolso pendiente. |
+| `cancelado` | Es **definitivo**: no se puede reabrir ni cancelar de nuevo. |
+
+**Devolver el inventario no borra ni edita nada**: anula los consumos que el
+pedido dejó en el kardex (`inventario.AnularMovimientosDePedidoTx`), con el mismo
+mecanismo de la anulación manual — el historial se conserva y el índice único de
+`anula_a` hace imposible devolver dos veces. Los reportes de ventas ignoran los
+pedidos cancelados.
+
+**El reembolso ocurre fuera del sistema** (banco o pasarela). Al cancelar, el
+pago aprobado queda con `reembolso = 'pendiente'`; el detalle del pedido lo
+muestra en un recuadro, y **Marcar como reembolsado** anota quién y cuándo. Los
+pedidos guardan quién canceló y cuándo (`cancelado_por`, `cancelado_en`; el
+cliente figura como `cliente`) y si el inventario volvió (`inventario_devuelto`).
+
+### Formas de pago y cuentas bancarias
+
+Ambas se administran en `/admin/cuentas` (módulo **Bancos**, clave `cuentas`):
+
+- **Formas de pago** (`internal/sitio/formas_pago.go`, tabla `formas_pago`):
+  Tarjeta y Transferencia se activan o desactivan con un botón, y queda anotado
+  quién y cuándo. Nacen activas. Desactivar una forma de pago solo impide crear
+  pedidos **nuevos** con ella: un cliente que ya pidió por transferencia puede
+  seguir subiendo su comprobante y el negocio puede aprobarlo.
+- **Cuentas bancarias** (`internal/cuentas`): banco, tipo (monetaria o ahorro),
+  número, titular, moneda (GTQ o USD), instrucciones, orden y activa. Los datos
+  se validan en el servidor (sin saltos de línea: terminan en correos). **Cambiar
+  una cuenta equivale a desviar los pagos**, así que cada alta, edición,
+  activación, desactivación y baja queda en `cuentas_bancarias_historial` con
+  quién, desde qué IP y qué cambió (el historial sobrevive a la baja de la cuenta).
+
+### Envío a domicilio
+
+El costo vive en la base de datos (`config_sitio.costo_envio`, Q 45.00 por
+omisión) y se cambia en `/admin/sitio`. El servidor lo calcula siempre
+(`costoEnvioPara`): el navegador no manda ni puede cambiar ese monto. Se suma
+al total de los pedidos a domicilio, tanto con tarjeta como con transferencia, y
+se **copia** a `pedidos.costo_envio`: cambiar el costo después no altera
+pedidos ya hechos. El checkout muestra la línea de envío en el resumen.
+
+### Correo saliente
+
+`internal/correo` guarda la configuración del servidor de correo y envía con ella.
+
+- **Dónde vive:** `smtp.json`, junto a `config.json` y `admin.json` (permisos
+  600, fuera de git, incluido en los respaldos), no en la base de datos, para
+  que un volcado de la base no arrastre la contraseña.
+- **Qué se configura** en `/admin/correo` (módulo **Correo**): servidor, puerto,
+  seguridad (STARTTLS en el 587 o SSL en el 465), usuario, contraseña, nombre y
+  correo del remitente, hasta 10 correos que reciben los avisos y la
+  **dirección pública de la tienda** (la de los enlaces).
+- **Siempre cifrado:** no existe el modo sin cifrar; se verifica el certificado
+  y, si el servidor no ofrece cifrado, no se envía la contraseña ni el correo.
+- **La contraseña nunca vuelve al navegador.** Dejarla en blanco al guardar
+  conserva la anterior, pero solo si no cambiaron el servidor ni el usuario
+  (así no viaja a un destino distinto del que se escribió).
+- **Gmail:** hay que usar una *contraseña de aplicación* (requiere la
+  verificación en dos pasos); la pantalla trae los pasos. Gmail pone siempre su
+  propia cuenta como remitente y permite unos 500 correos al día.
+- **Botón de prueba:** manda a los correos de aviso (o al remitente), nunca a una
+  dirección que llegue en la petición, y una vez cada 10 segundos. Si falla,
+  explica la etapa (conexión, cifrado, usuario o contraseña, remitente,
+  destinatario) sin mostrar datos internos.
+- **Protección de cabeceras:** el asunto y las direcciones no admiten saltos de
+  línea, así que nada que venga de un cliente puede colar cabeceras (`Bcc`).
+- El envío es asíncrono y un fallo solo se registra (`App.EnviarCorreo` permite
+  a las pruebas reemplazarlo).
+
+### Carrito y catálogo
+
+- **Catálogo paginado** (`/?cat=1&cat=2&pagina=2`): 20 productos por página. El
+  filtro de categorías y la paginación se resuelven en el servidor (no ocultando
+  tarjetas con JavaScript), así que el enlace se puede compartir y "Atrás"
+  funciona. Una página fuera de rango se ajusta a la última.
+- **El carrito no pasa del stock disponible.** `Carrito.agregar` limita la
+  cantidad al stock que trae la página y devuelve cuántas agregó; el botón
+  *Agregar al carrito* se desactiva al llegar al máximo (también al recargar o
+  volver con "Atrás"), la página del producto explica cuando se pidió más de lo
+  que hay, y un carrito que ya traía de más se corrige al abrir el carrito o el
+  checkout. El límite usa el stock del momento en que se agregó: el servidor
+  vuelve a comprobarlo al crear el pedido, y esa es la barrera real.
 
 ### Config de base de datos (`internal/config`)
 
@@ -444,8 +688,11 @@ el subrouter `admin` en `internal/web/router.go` con
   menú, ya logueado): pide la contraseña actual, y al guardar rota también
   la llave de firma de sesión — eso invalida la sesión actual (y cualquier
   otra) a propósito, forzando a iniciar sesión de nuevo con la contraseña
-  nueva. No hay flujo de "olvidé mi contraseña"; ver
-  [RECUPERAR-CONTRASENA.md](RECUPERAR-CONTRASENA.md).
+  nueva. No hay flujo de "olvidé mi contraseña": para el `admin` raíz hay que borrar
+  `admin.json` en el servidor y volver a pasar por `/admin/setup` (que queda
+  abierto hasta que se cree de nuevo: hacerlo de inmediato y, en producción, por
+  un túnel SSH). Crear un `admin.json` nuevo genera otra llave de firma, así que
+  cierra todas las sesiones.
 - **Límite de intentos.** `/admin/login` bloquea una IP 15 minutos tras 5
   intentos fallidos en 10 minutos (`internal/web/limitador.go`, ver
   "Limitaciones conocidas" para el alcance de este límite). Se cuenta por IP
@@ -493,9 +740,17 @@ usuarios adicionales guardados en Postgres (tablas `usuarios`, `modulos`,
 `usuario_modulos`, paquete `internal/usuarios`), con dos roles:
 
 - **Superusuario**: acceso a todos los módulos del panel (Base de datos,
-  Inventario, Sitio web, Pedidos) **excepto** el mantenimiento de usuarios.
+  Inventario, Sitio web, Pedidos, Bancos, Correo y Reportes) **excepto** el
+  mantenimiento de usuarios.
 - **Administrativo**: acceso solo a los módulos que se le asignen uno por
   uno desde `/admin/usuarios`.
+
+Los módulos son `bd`, `inventario`, `sitio`, `pedidos`, `cuentas` (Bancos),
+`correo` y `reportes`. **Bancos y Correo son sensibles**: cambiar una cuenta
+bancaria o el servidor de correo puede desviar pagos o correos de clientes, así
+que conviene asignarlos con cuidado a un usuario administrativo (un
+superusuario los tiene siempre). Los cambios de cuentas bancarias y de formas de
+pago quedan registrados con quién los hizo.
 
 El mantenimiento de usuarios (`/admin/usuarios`) es exclusivo del usuario
 `admin` — ni siquiera un superusuario puede entrar ahí
@@ -530,15 +785,20 @@ cmd/server/main.go          punto de entrada: wiring de storage, DB, http.Server
 cmd/optimizar-fotos/        reduce las fotos ya guardadas (misma regla que al subir); no toca los originales
 
 deploy/                     despliegue y respaldos del servidor: DESPLIEGUE.md (desplegar.ps1,
-                            instalar-remoto.sh) y RESPALDOS.md (restic diario)
+                            instalar-remoto.sh), RESPALDOS.md (restic diario) y RECUPERACION.md
+                            (cómo restaurar desde un respaldo)
 .claude/skills/desplegar/   skill de Claude Code (/desplegar) que guía el despliegue
 
 internal/
   config/                   config.json (Postgres) y admin.json (credenciales del admin raíz)
   db/                        Open/Test/EnsureDatabase
   inventario/                categorías, productos, fotos, movimientos (kardex)
-  sitio/                     configuración del negocio (Mantenimiento 3)
-  tienda/                    pedidos, pagos y checkout con reserva de stock (checkout.go)
+  sitio/                     configuración del negocio: datos, colores, costo de envío y formas de pago
+  tienda/                    pedidos, pagos y checkout con reserva de stock (checkout.go); pago por
+                             transferencia (transferencia.go, comprobantes.go, entrega.go, revision.go)
+                             y cancelaciones (cancelacion.go)
+  cuentas/                   cuentas bancarias para transferencias, con historial de cambios
+  correo/                    configuración SMTP (smtp.json) y envío de correos
   pasarela/                  cliente HTTP de la pasarela de pago
   reportes/                  consultas de los reportes del admin
   usuarios/                  usuarios, roles y módulos asignables
@@ -556,7 +816,8 @@ web/
     *.html                    una plantilla por página
   static/
     css/style.css            estilos del admin; el menú superior pasa a un botón ☰ (checkbox,
-                              sin JavaScript) por debajo de 1500 px y se compacta hasta 2100 px
+                              sin JavaScript) por debajo de 1500 px y se compacta hasta 2100 px (con menos
+                              margen lateral hasta 1900 px)
     css/tienda.css            estilos de la tienda pública (con color-mix())
     js/                       todo el JavaScript (carrito.js, tienda-*.js, admin-*.js);
                               las plantillas no llevan JS inline
@@ -564,9 +825,13 @@ web/
 media/
   productos/                 fotos de producto (gitignored)
   sitio/                     logo del negocio (gitignored)
+comprobantes/                imágenes de las transferencias (gitignored; privadas, el router no
+                             las sirve)
 
 config.json                  gitignored — credenciales de Postgres
 config.json.example          plantilla de referencia
+admin.json                   gitignored — usuario admin raíz y llave de firma de sesiones
+smtp.json                    gitignored — servidor de correo saliente (con su contraseña)
 ```
 
 ---
@@ -589,12 +854,17 @@ visitante ──HTTPS──> Cloudflare ──HTTPS──> Caddy ──> app Go 
   la app solo la acepta porque `TRUSTED_PROXIES=127.0.0.1,::1` (ver
   "Limitaciones conocidas").
 - **La app** está en `/opt/manualidades` (ejecutable, `web/`, `media/`,
-  `config.json`, `admin.json`) y corre como un usuario sin privilegios mediante
+  `comprobantes/`, `config.json`, `admin.json`, `smtp.json`) y corre como un usuario sin privilegios mediante
   el servicio de systemd `manualidades`.
 - **Direcciones:** `prueba.manualidadescristal.com` apunta a la tienda;
   `manualidadescristal.com` sigue mostrando una página temporal de "En
   construcción" servida por un Worker de Cloudflare.
-- **Fotos:** en el disco de la máquina (`media/`), sin servicio externo.
+- **Fotos y comprobantes:** en el disco de la máquina (`media/` y
+  `comprobantes/`), sin servicio externo.
+- **Dirección pública de la tienda:** se configura en `/admin/correo` y es la
+  que llevan los enlaces de los correos (hoy `https://prueba.manualidadescristal.com`).
+  Al pasar al dominio principal hay que cambiarla allí y el parámetro
+  `-UrlPublica` de `deploy/desplegar.ps1`.
 - **Acceso al servidor:** solo por SSH con llave. Postgres no es accesible desde
   internet; para consultarlo se usa un túnel SSH.
 
@@ -603,10 +873,19 @@ Cómo llevar un cambio al servidor y cómo se respalda y restaura:
 | Tema | Dónde |
 |---|---|
 | Desplegar (`deploy/desplegar.ps1`, skill `/desplegar` de Claude Code) | [deploy/DESPLIEGUE.md](deploy/DESPLIEGUE.md) |
-| Respaldos diarios cifrados (restic) y restauración | [deploy/RESPALDOS.md](deploy/RESPALDOS.md) |
+| Respaldos diarios cifrados (restic) | [deploy/RESPALDOS.md](deploy/RESPALDOS.md) |
+| Recuperación paso a paso (datos perdidos o servidor perdido) | [deploy/RECUPERACION.md](deploy/RECUPERACION.md) |
 
-**Pendiente antes de abrir la tienda al público:** una pasarela de pago real
-(los datos de tarjeta hoy pasan sin tokenizar por el servidor) y reemplazar los
+**Estado de la tienda:** el sitio de prueba vende por transferencia bancaria; la
+tarjeta está desactivada en el servidor (Bancos → Formas de pago) porque aún no
+hay pasarela real. Para pasar a `manualidadescristal.com` hay que cargar el
+inventario, las cuentas bancarias reales y el costo de envío, poner la dirección
+pública en Correo (y `-UrlPublica` en el script de despliegue) y apuntar el
+dominio a la tienda (Caddy y Cloudflare).
+
+**Pendiente antes de cobrar con tarjeta:** una pasarela de pago real (los datos
+de tarjeta hoy pasan sin tokenizar por el servidor), cerrar los huecos de
+idempotencia de los cobros (ver "Limitaciones conocidas") y reemplazar los
 mensajes de error internos que llegan al usuario.
 
 ---
@@ -661,22 +940,35 @@ mande algo distinto.
 ### Sitio (`internal/sitio/schema.go`)
 
 Una sola fila (`config_sitio`, `id` fijo en 1): nombre del negocio,
-dirección, teléfono, email, Facebook, Instagram, WhatsApp, ruta del logo, y
-4 colores (`color_fondo`, `color_texto`, `color_marco`, `color_acento`).
+dirección, teléfono, email, Facebook, Instagram, WhatsApp, ruta del logo,
+4 colores (`color_fondo`, `color_texto`, `color_marco`, `color_acento`) y el
+`costo_envio` a domicilio (Q 45.00 por omisión, de 0 a 9,999.99).
+
+| Tabla | Columnas clave | Notas |
+|---|---|---|
+| `formas_pago` | `clave` (`tarjeta`/`transferencia`), `nombre`, `activa`, `orden`, `actualizado_por`, `actualizado_en` | Dos filas fijas, sembradas por la migración y activas al nacer; el admin solo las activa o desactiva |
 
 ### Tienda (`internal/tienda/schema.go`)
 
 | Tabla | Columnas clave | Notas |
 |---|---|---|
-| `pedidos` | `cliente_nombre`, `cliente_telefono`, `cliente_email`, `cliente_nit` (default `'CF'`), `metodo_entrega` (`recoger`/`domicilio`), `direccion_entrega`, `estado`, `total`, `expira_en`, `token` | `estado` nace en `'pagando'` (checkout en curso) y pasa a `'pagado'` solo cuando el cobro se aprueba; desde `/admin/pedidos/{id}` un pedido **pagado** se cambia a `'procesando'` (en bodega), `'entregado'` o `'cancelado'` — ver `tienda.EstadosValidos`. Los estados `'pendiente_pago'`, `'pagando'` y `'expirado'` pertenecen al ciclo de pago y el admin no los puede cambiar a mano. `expira_en` es hasta cuándo vale la reserva de stock (NULL si ya no reserva); `token` es el identificador aleatorio que el navegador guarda en la cookie `pedido_token` para reencontrar su pedido al reintentar (índice único parcial) |
+| `pedidos` | `cliente_nombre`, `cliente_telefono`, `cliente_email`, `cliente_nit` (default `'CF'`), `metodo_entrega` (`recoger`/`domicilio`), `direccion_entrega`, `metodo_pago` (`tarjeta`/`transferencia`), `costo_envio`, `estado`, `total`, `expira_en`, `token`, `cancelado_por`, `cancelado_en`, `inventario_devuelto` | `total` **incluye** `costo_envio`, que es una copia del costo vigente al crear el pedido. `estado` es uno de: `pendiente_pago`, `pagando`, `espera_transferencia`, `transferencia_por_revisar`, `expirado` (ciclo de pago, que el admin no cambia a mano) o `pagado`, `procesando`, `entregado`, `cancelado` (pedidos reales: ver `tienda.EstadosValidos`). Desde el admin un pedido pagado pasa a `procesando` o `entregado`; **`cancelado` solo se alcanza con "Cancelar pedido"**, que devuelve el inventario, y es definitivo. `expira_en` es hasta cuándo vale la reserva de stock (NULL si no vence o ya no reserva); `token` es el identificador aleatorio de la cookie `pedido_token` (tarjeta) y del enlace privado `/pedido/{token}` (transferencia), con índice único parcial. `cancelado_por` vale `cliente` si canceló el propio cliente |
 | `pedido_items` | `pedido_id`, `producto_id`, `nombre_producto`, `cantidad`, `precio_unitario`, `subtotal` | Nombre y precio son una **copia** del momento de la compra — si el producto cambia de nombre o precio después, el pedido histórico no se altera |
-| `pagos` | `pedido_id` (**nullable**), `metodo`, `monto`, `estado` (`iniciado`/`aprobado`/`rechazado`/`fallo`/`por_conciliar`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo` | Registro de **todo intento de pago**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). Desde la reserva de stock, todo intento nace ya con `pedido_id` (el pedido se crea antes de cobrar), en estado `iniciado`, y se reemplaza por el desenlace real: `aprobado`, `rechazado` (lo dijo el proveedor), `fallo` (el proveedor no respondió) o `por_conciliar` (el cobro pudo aprobarse pero el pedido no se pudo confirmar, o el proceso murió a mitad del cobro; requiere verificar en la pasarela y reembolsar o completar a mano). `pedido_id` sigue siendo nullable por los pagos anteriores a este cambio — ver `internal/pasarela` y `/admin/pedidos/pagos` |
+| `comprobantes` | `pedido_id`, `archivo`, `numero_boleta`, `banco_origen`, `fecha_transferencia`, `monto`, `estado` (`por_revisar`/`aceptado`/`rechazado`), `nota`, `revisado_por`, `revisado_en` | Lo que sube el cliente al pagar por transferencia. `monto` es lo que el cliente dice haber transferido (0 en los anteriores a ese campo). Índice único (banco, boleta) entre los no rechazados: la misma boleta no sirve para dos pedidos. `archivo` está en `comprobantes/`, fuera de las carpetas públicas |
+| `pagos` | `pedido_id` (**nullable**), `metodo` (`tarjeta`/`transferencia`), `monto`, `estado` (`iniciado`/`aprobado`/`rechazado`/`fallo`/`por_conciliar`), `referencia`, `tarjeta_marca`, `tarjeta_ultimos4`, `motivo_rechazo`, `reembolso`, `reembolso_por`, `reembolso_en` | Registro de **todo intento de pago con tarjeta**, separado a propósito de `pedidos.estado` (ese es el estado *logístico*, no el del pago). Todo intento nace con `pedido_id` (el pedido se crea antes de cobrar), en estado `iniciado`, y se reemplaza por el desenlace real: `aprobado`, `rechazado` (lo dijo el proveedor), `fallo` (el proveedor no respondió) o `por_conciliar` (el cobro pudo aprobarse pero el pedido no se pudo confirmar, o el proceso murió a mitad del cobro; requiere verificar en la pasarela y reembolsar o completar a mano). Un pago por transferencia se registra **ya aprobado** al aprobar el comprobante (referencia = banco + boleta). `reembolso` vale `''`, `pendiente` (el pedido se canceló) o `hecho`; el reembolso en sí se hace fuera del sistema. `pedido_id` sigue siendo nullable por los pagos anteriores a la reserva de stock — ver `internal/pasarela` y `/admin/pedidos/pagos` |
+
+### Cuentas bancarias (`internal/cuentas/cuentas.go`)
+
+| Tabla | Columnas clave | Notas |
+|---|---|---|
+| `cuentas_bancarias` | `banco`, `tipo_cuenta` (`monetaria`/`ahorro`), `numero`, `titular`, `moneda` (`GTQ`/`USD`), `instrucciones`, `activa`, `orden` | Solo las activas se ofrecen a los clientes; si no hay ninguna activa, la transferencia no se ofrece |
+| `cuentas_bancarias_historial` | `cuenta_id` (sin clave foránea a propósito), `accion` (`creada`/`editada`/`activada`/`desactivada`/`eliminada`), `usuario`, `ip`, `detalle` | Cada cambio se anota en la misma transacción que lo hace, con qué campo cambió de qué a qué; sobrevive a la baja de la cuenta |
 
 ### Usuarios y permisos (`internal/usuarios/schema.go`)
 
 | Tabla | Columnas clave | Notas |
 |---|---|---|
-| `modulos` | `clave` (único: `bd`/`inventario`/`sitio`/`pedidos`/`reportes`), `nombre`, `orden` | Catálogo fijo, sembrado por la migración; no se edita desde la UI |
+| `modulos` | `clave` (único: `bd`/`inventario`/`sitio`/`pedidos`/`reportes`/`cuentas`/`correo`), `nombre`, `orden` | Catálogo fijo, sembrado por la migración; no se edita desde la UI |
 | `usuarios` | `usuario` (único), `password_hash`, `secret_key`, `rol` (`superusuario`/`administrativo`), `activo` | `secret_key` es propia de cada fila — cambiar su contraseña solo cierra su propia sesión |
 | `usuario_modulos` | `usuario_id`, `modulo_id` | Solo se usa para `rol='administrativo'`; un `superusuario` no necesita filas aquí |
 
@@ -702,7 +994,7 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET/POST | `/admin/cambiar-password` | Cambiar la contraseña (requiere sesión) |
 | GET | `/admin/sesiones` | Ver las sesiones abiertas de la cuenta (link "Cuenta") |
 | POST | `/admin/sesiones/{id}/revocar` | Cerrar una sesión concreta (también `/admin/sesiones/revocar-otras`) |
-| GET | `/admin` | Panel principal (accesos a los 4 mantenimientos) |
+| GET | `/admin` | Panel principal (accesos a los módulos que la sesión puede abrir) |
 | GET/POST | `/admin/mantenimiento/bd` | Mantenimiento 1: conexión a Postgres |
 | GET | `/admin/mantenimiento/inventario` | Landing del Mantenimiento 2 |
 | GET/POST | `/admin/mantenimiento/inventario/categorias` | Listar/crear categorías |
@@ -717,10 +1009,21 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 | GET/POST | `/admin/mantenimiento/inventario/movimientos` | Kardex general + formulario de registro |
 | POST | `/admin/mantenimiento/inventario/movimientos/{id}/anular` | Anular un movimiento manual (registra el contrario; no borra nada) |
 | GET | `/admin/mantenimiento/inventario/reporte` | Reporte por rango de fechas, con filtros e impresión |
-| GET/POST | `/admin/sitio` | Mantenimiento 3: datos del negocio, logo, colores |
+| GET/POST | `/admin/sitio` | Mantenimiento 3: datos del negocio, logo, colores y costo de envío |
 | GET | `/admin/pedidos` | Pedidos pagados de la tienda y, aparte, los pendientes de pago (reservan stock hasta que vencen) |
 | GET | `/admin/pedidos/pagos` | Todos los intentos de pago, incluidos los rechazados, fallidos, en curso y por conciliar |
-| GET/POST | `/admin/pedidos/{id}` | Detalle de un pedido; el POST cambia su estado |
+| GET/POST | `/admin/pedidos/{id}` | Detalle de un pedido (con sus comprobantes y el estado del reembolso); el POST cambia su estado (pagado, procesando, entregado) |
+| POST | `/admin/pedidos/{id}/cancelar` | Cancelar un pedido (devuelve el inventario si estaba pagado; definitivo) |
+| POST | `/admin/pedidos/{id}/reembolsado` | Anotar que ya se devolvió el dinero de un pedido cancelado |
+| GET | `/admin/pedidos/{id}/comprobantes/{cid}/archivo` | La imagen de un comprobante (solo con sesión y módulo Pedidos) |
+| POST | `/admin/pedidos/{id}/comprobantes/{cid}/aprobar` | Aprobar una transferencia: descuenta el inventario, registra el pago y pasa el pedido a `pagado` |
+| POST | `/admin/pedidos/{id}/comprobantes/{cid}/rechazar` | Rechazar con motivo (pedir otro comprobante, o cancelar el pedido) |
+| GET/POST | `/admin/cuentas` | **Bancos**: formas de pago, lista de cuentas bancarias, alta e historial de cambios |
+| GET/POST | `/admin/cuentas/{id}/editar` | Editar una cuenta bancaria |
+| POST | `/admin/cuentas/{id}/activar` \| `/desactivar` \| `/eliminar` | Cambiar el estado de una cuenta o darla de baja |
+| POST | `/admin/cuentas/formas-pago/{clave}/activar` \| `/desactivar` | Activar o desactivar Tarjeta o Transferencia |
+| GET/POST | `/admin/correo` | **Correo saliente**: servidor SMTP, correos de aviso y dirección pública de la tienda |
+| POST | `/admin/correo/probar` | Enviar un correo de prueba (a los correos de aviso) |
 | GET | `/admin/usuarios` | Lista de usuarios (superusuario/administrativo) — **exclusivo del usuario `admin`** |
 | GET/POST | `/admin/usuarios/nuevo` | Crear usuario, con rol y módulos asignados |
 | GET/POST | `/admin/usuarios/{id}/editar` | Editar rol/módulos; contraseña opcional (en blanco = no cambiarla) |
@@ -731,12 +1034,18 @@ Todas requieren sesión iniciada, excepto las 3 primeras.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/` | Catálogo (filtro de categorías, tarjetas de producto) |
+| GET | `/` | Catálogo paginado de 20 (`?cat=1&cat=2&pagina=2`: filtro de categorías y página, resueltos en el servidor) |
 | GET | `/producto/{id}` | Detalle de producto (galería, cantidad, agregar al carrito) |
 | GET | `/carrito` | Carrito (leído de `localStorage` por JS) |
 | GET | `/checkout` | Formulario de cliente + entrega + resumen |
 | POST | `/checkout/confirmar` | Recibe el carrito completo (JSON): reserva el stock, cobra en la pasarela y, si aprueba, confirma el pedido y descarga el kardex. Usa la cookie `pedido_token` para reintentar sobre el mismo pedido |
 | GET | `/pedido/{id}/confirmacion` | Página de gracias; vacía el carrito del navegador. Solo la ve el navegador que hizo el pedido (cookie `pedido_token`); a cualquier otro le responde `404` |
+| POST | `/checkout/transferencia` | Recibe el carrito completo (JSON) y crea un pedido que reserva el stock 48 h y espera la transferencia; responde con la dirección de su página privada |
+| GET | `/pedido/{token}` | Página privada del pedido por transferencia (cuentas, monto, plazo, formulario del comprobante, cambiar entrega, cancelar). La llave es el token del enlace, no el `id` |
+| POST | `/pedido/{token}/comprobante` | Subir el comprobante (imagen + banco, boleta, fecha y monto); el pedido pasa a revisión |
+| POST | `/pedido/{token}/entrega` | Cambiar entre recoger y domicilio mientras espera la transferencia (recalcula el monto) |
+| POST | `/pedido/{token}/cancelar` | Cancelar el propio pedido mientras espera la transferencia |
+| GET/POST | `/consultar-pedido` | Pedir que se reenvíe el enlace de un pedido (número + correo); responde siempre lo mismo |
 
 ### Recursos estáticos
 
@@ -745,7 +1054,7 @@ logo) — compartidas entre admin y tienda, sin prefijo.
 
 ---
 
-## Los 3 mantenimientos, explicados
+## Los mantenimientos, explicados
 
 ### Mantenimiento 1 — Base de datos
 
@@ -787,7 +1096,8 @@ desde un usuario que solo tenga este módulo.
 
 Nombre del negocio, dirección, teléfono, email, redes sociales (Facebook,
 Instagram, WhatsApp), logo, y 4 colores base (fondo, texto, marco/bordes,
-acento) con **vista previa en vivo** antes de guardar. Estos 4 colores se
+acento) con **vista previa en vivo** antes de guardar, y el **costo de envío a
+domicilio** (ver "Envío a domicilio"). Estos 4 colores se
 inyectan como variables CSS (`--t-fondo`, `--t-texto`, `--t-marco`,
 `--t-acento`) en el `<head>` de cada página de la tienda pública; todos los
 demás tonos (sombras, hover, fondos de tarjeta) se **derivan** de esos 4 con
@@ -796,29 +1106,68 @@ el negocio elija se ve coherente, no solo la paleta de ejemplo.
 
 ---
 
-## La tienda pública — Fase 1
+### Bancos — cuentas bancarias y formas de pago
+
+`/admin/cuentas` (módulo `cuentas`): arriba, el panel **Formas de pago** para
+activar o desactivar Tarjeta y Transferencia; debajo, las cuentas bancarias a las
+que los clientes pueden transferir (alta, edición, activar/desactivar, baja) y el
+historial de cambios. Ver "Formas de pago y cuentas bancarias".
+
+### Correo (la pantalla del admin)
+
+`/admin/correo` (módulo `correo`): servidor SMTP, correos que reciben los avisos,
+dirección pública de la tienda y botón de prueba. Ver "Correo saliente" en
+Arquitectura.
+
+### Pedidos
+
+`/admin/pedidos` (módulo `pedidos`): pedidos pagados y pendientes (con el número
+de pedido en cada fila), intentos de pago, y en el detalle de cada pedido la
+revisión de los comprobantes de transferencia (aprobar o rechazar), el cambio de
+estado y **Cancelar pedido**. Ver "Revisión de transferencias en el admin" y
+"Cancelaciones y reembolsos".
+
+### Reportes
+
+`/admin/reportes` (módulo `reportes`, `internal/reportes`): consultas de solo
+lectura, con gráficos y filtros por rango de fechas — **ventas** por período
+(separando tienda y venta manual), ventas por **producto**, **utilidad** (precio de
+venta menos el precio de compra actual del producto), **stock** valorizado,
+**pedidos** por estado y por forma de entrega, y los **movimientos** del kardex.
+Una venta es un consumo marcado `es_venta`, así que las ventas de la tienda y las
+manuales salen de la misma fuente y nada se cuenta dos veces. Los reportes de
+ventas ignoran las ventas anuladas y los pedidos cancelados.
+
+---
+
+## La tienda pública
 
 ### Flujo de compra
 
-1. **Catálogo** (`/`): productos activos, filtrables por categoría (dropdown
-   con checkboxes, igual mecánica que el admin). Cada tarjeta tiene un botón
+1. **Catálogo** (`/`): productos activos, **paginados de 20 en 20**, filtrables
+   por categoría (dropdown con checkboxes y botón *Aplicar*; el filtro y la
+   página van en la dirección y los resuelve el servidor). Cada tarjeta tiene un botón
    "Agregar al carrito" directo (cantidad 1) además del link al detalle.
 2. **Detalle** (`/producto/{id}`): galería completa (clic en miniatura para
    ampliar), selector de cantidad (limitado al stock disponible), "Agregar
-   al carrito".
+   al carrito". Si se pide más de lo que hay, se agrega lo posible y se explica.
 3. **Carrito** (`/carrito`): vive enteramente en `localStorage` del
-   navegador — no hay sesión de servidor. Permite cambiar cantidades y
-   quitar productos.
+   navegador — no hay sesión de servidor. Permite cambiar cantidades (sin pasar del
+   stock disponible) y quitar productos.
 4. **Checkout** (`/checkout`): nombre, teléfono, email, NIT (opcional,
    default `"CF"` = Consumidor Final), método de entrega — **Recoger en
    tienda** o **Entrega a domicilio** (la dirección solo se habilita si
-   eligen domicilio) — y notas.
-5. Al presionar **Pagar**, el navegador manda el carrito completo (con los
-   datos de tarjeta) por `fetch()` a `POST /checkout/confirmar`. El servidor:
+   eligen domicilio) — y notas. El resumen suma el **envío a domicilio** cuando corresponde. El
+   cliente elige la **forma de pago** entre las que estén disponibles (ver
+   "Pago por transferencia bancaria"): con una sola no hay selector, y con
+   ninguna el checkout avisa que por ahora no se reciben pagos en línea.
+5. **Con tarjeta**, al presionar **Pagar**, el navegador manda el carrito
+   completo (con los datos de tarjeta) por `fetch()` a
+   `POST /checkout/confirmar`. El servidor:
    - Limita los intentos por IP (8 en 10 minutos) antes de procesar nada, para
      frenar la prueba automatizada de tarjetas (`internal/web/limitador.go`).
    - Recalcula los precios desde la base de datos (nunca confía en lo que
-     mande el navegador).
+     mande el navegador) y suma el costo de envío si es a domicilio.
    - **Reserva el stock** creando el pedido en estado `pagando`. Si ya no
      hay, responde sin haber cobrado nada.
    - Le pide el cobro a `pasarela-simulada` (ver "Pasarela de pago
@@ -833,8 +1182,16 @@ el negocio elija se ve coherente, no solo la paleta de ejemplo.
      real) — la misma tabla que usa el Mantenimiento 2 —, marca el pago con
      la referencia real del proveedor y pasa el pedido a `pagado`. Si algo
      falla, no se guarda nada y el cobro queda `por_conciliar`.
-6. **Confirmación** (`/pedido/{id}/confirmacion`): resumen del pedido, y el
-   JS de esta página vacía el carrito del navegador.
+6. **Con transferencia**, el botón dice *Continuar con la transferencia* y se
+   piden nombre, teléfono y un correo válido. El servidor crea un pedido que
+   reserva el stock 48 horas (`POST /checkout/transferencia`) y lleva al cliente
+   a su página privada (`/pedido/{token}`): ahí ve las cuentas y el monto exacto,
+   transfiere por su cuenta y **sube la foto del comprobante** con el banco, la
+   boleta, la fecha y el monto. También recibe el enlace por correo, y puede
+   recuperarlo en "Consultar mi pedido". El negocio lo revisa y lo aprueba desde
+   el admin: recién entonces el pedido pasa a `pagado` y sale del inventario.
+7. **Confirmación** (`/pedido/{id}/confirmacion`, solo tarjeta): resumen del
+   pedido, y el JS de esta página vacía el carrito del navegador.
 
 Como el checkout reusa exactamente la misma lógica que el kardex manual
 (`inventario.CreateMovimientoTx`), **el Reporte de inventario ya muestra las
@@ -873,11 +1230,29 @@ go test ./...
   tabla, datos guardados literales y que no se filtren errores de SQL) y que
   los scripts movidos a
   `web/static/js/` sigan funcionando en tienda y admin. Se ejecutan con
-  `go test ./internal/e2e/ -v` (~45 s). Sin Postgres se saltan todas; sin
+  `go test ./internal/e2e/ -v` (~2 minutos). Sin Postgres se saltan todas; sin
   Chrome/Edge solo las de navegador (se puede indicar uno con la variable
   `E2E_CHROME`).
 - `internal/sesiones/sesiones_test.go` prueba el registro de sesiones contra
   una base temporal.
+- **Pago por transferencia** (en `internal/tienda/*_test.go`, contra una base
+  temporal): reserva de 48 h y vencimiento, comprobantes (boleta repetida, monto
+  y fecha, dos subidas simultáneas), aprobar y rechazar (el kardex y el pago
+  quedan coherentes; dos revisores a la vez, solo gana uno), cancelaciones (el
+  inventario se devuelve una sola vez, un pedido entregado pregunta si volvió),
+  cambio de entrega, costo de envío y subir un comprobante mientras se cancela.
+- `internal/cuentas`, `internal/sitio` y `internal/correo`: validación y
+  historial de las cuentas, formas de pago y costo de envío, y el envío de
+  correos contra un **servidor SMTP falso en memoria con STARTTLS y SSL reales**
+  (autenticación, contraseña incorrecta, certificado no confiable, destinatario
+  rechazado, imposibilidad de colar cabeceras).
+- `internal/e2e/` también recorre la tienda por transferencia de punta a punta
+  (cliente y admin, con los correos capturados), las formas de pago, las
+  cancelaciones, el costo de envío, el carrito con tope de stock y la
+  paginación, y que la imagen de un comprobante no se sirva a nadie sin sesión
+  con permiso. Varias pruebas se verificaron además "rompiendo a propósito" la
+  regla que vigilan, para comprobar que fallan sin ella. En total son más de
+  200 pruebas.
 
 ---
 
@@ -911,6 +1286,27 @@ go test ./...
   explícita para que la tienda pública tenga la URL "natural" del dominio;
   en producción, el admin podría además vivir en un subdominio aparte, pero
   esa decisión se dejó para cuando exista un dominio real.
+- **Los comprobantes no son prueba del pago.** Una captura se puede falsificar:
+  la prueba real es ver el depósito en el banco. Por eso el sistema pide boleta,
+  banco, fecha y monto, resalta cuando el monto no coincide, y deja la decisión
+  (aprobar o rechazar) en una persona. No hay conciliación bancaria automática.
+- **Una acción por cada cosa que toca dinero o inventario.** Cancelar un pedido
+  no es cambiar una etiqueta: devuelve el inventario (anulando, no borrando) y
+  deja el reembolso pendiente. Por eso existe `CancelarPedido` y
+  `ActualizarEstado` se niega a cancelar. Cancelado es definitivo; si el cliente
+  aún quiere el producto, se hace un pedido nuevo.
+- **Los enlaces privados usan un token, no el `id`.** El `id` es secuencial y
+  adivinable; el token (UUID) es la llave de acceso del cliente a su pedido, y
+  las páginas que lo llevan en la dirección no se guardan en caché ni lo mandan
+  como `Referer`.
+- **El servidor decide los montos.** El costo de envío, los precios y el total
+  los calcula siempre el servidor; el navegador solo los muestra.
+- **Lo que se desactiva no deja a nadie en el aire.** Desactivar una forma de
+  pago frena los pedidos nuevos, pero los pedidos ya creados con ella siguen
+  hasta terminar.
+- **La configuración con secretos vive en archivos, no en la base.** `config.json`
+  (Postgres), `admin.json` y `smtp.json` están fuera de git y de los volcados de
+  la base; entran en los respaldos cifrados.
 - **Storage abstraído desde el día uno.** Nunca se llama directamente a
   `os.WriteFile` fuera de `internal/storage/local.go` — todo pasa por la
   interfaz `Storage`, precisamente para poder añadir un backend S3-compatible
@@ -926,7 +1322,8 @@ go test ./...
   de `admin.json` — no hay forma de delegar esa delegación.
 - **Sin "olvidé mi contraseña".** Para `admin`, si se pierde hay que borrar
   `admin.json` a mano en el servidor y volver a pasar por `/admin/setup`
-  (detalle y riesgos en [RECUPERAR-CONTRASENA.md](RECUPERAR-CONTRASENA.md)).
+  (ver "Seguridad del panel de administración": mientras tanto `/admin/setup`
+  queda abierto, y al crear el nuevo acceso se cierran todas las sesiones).
   Para un usuario de la tabla `usuarios`, el `admin` puede resetearle la
   contraseña desde `/admin/usuarios/{id}/editar`, pero no hay flujo de
   autoservicio ("te mandamos un correo").
@@ -938,6 +1335,13 @@ go test ./...
   lo limpia. Razonable para un panel/tienda de bajo tráfico; una plataforma
   con varias instancias del servidor necesitaría un límite compartido (Redis
   u otro almacén central), porque cada instancia llevaría su propio contador.
+- **Otros límites de intentos, también en memoria:** crear pedidos por
+  transferencia (6 por hora por IP, y 3 pedidos abiertos por correo), subir
+  comprobantes (10 por hora), "Consultar mi pedido" (5 en 15 minutos, y un
+  reenvío cada 5 minutos por pedido) y los cambios de entrega o cancelaciones del
+  cliente (20 por hora). Frenan el acaparamiento de inventario y la automatización,
+  pero alguien con muchos correos y muchas IP podría reservar stock durante 48 h:
+  el negocio puede cancelar esos pedidos desde el admin.
 - **Detrás de un proxy hay que configurar `TRUSTED_PROXIES`.** `clientIP`
   parte de `RemoteAddr` y solo lee `CF-Connecting-IP` o `X-Forwarded-For` si
   la conexión viene de una IP o CIDR listada en la variable de entorno
@@ -973,7 +1377,7 @@ go test ./...
   - Ventas marcadas como tal antes de agregar `precio_venta` al kardex
     quedaron con precio `0` — cuentan como venta en los reportes, pero no
     suman al "Total vendido ($)".
-- **El pago es simulado.** `pasarela-simulada` es un proyecto propio que
+- **El pago con tarjeta es simulado** (y está desactivado en el servidor). `pasarela-simulada` es un proyecto propio que
   hace de proveedor falso (con 3 modos: aprobar/rechazar/fallar); no hay
   integración real con ningún procesador de pagos todavía (Fase 3). El
   punto de reemplazo ya está aislado en `internal/pasarela`.
@@ -987,6 +1391,32 @@ go test ./...
   los respaldos. En una plataforma de contenedores efímeros (Railway, Render,
   Fly.io sin volumen) se perderían en cada redeploy; si algún día se cambia a
   una así, hace falta el backend S3-compatible mencionado arriba.
+- **Los cobros con tarjeta no tienen idempotencia completa.** Hay tres huecos que
+  se cerrarán al integrar la pasarela real: (1) dos envíos simultáneos del primer
+  intento (sin cookie todavía) pueden crear dos pedidos y dos cobros; (2) un
+  timeout de la pasarela se trata como "no respondió" y vuelve a permitir pagar,
+  aunque el proveedor pudiera haber cobrado; (3) no se manda ninguna llave de
+  operación única al proveedor ni hay un índice único sobre la referencia. La
+  solución depende de que el banco acepte una llave de idempotencia o permita
+  consultar una orden.
+- **Los reembolsos se hacen fuera del sistema.** Cancelar un pedido pagado solo
+  deja el pago marcado como reembolso pendiente; el sistema no devuelve el dinero
+  ni se comunica con el banco o la pasarela.
+- **El límite de stock del carrito usa el stock del momento en que se agregó.**
+  Si otra persona reserva unidades después, el carrito no se entera hasta que se
+  vuelve al catálogo o se llega a pagar; allí el servidor lo vuelve a comprobar y
+  es la barrera real.
+- **Pedidos cancelados antes de la devolución automática** (cuando cancelar solo
+  cambiaba la etiqueta) no recuperaron su inventario; su detalle dice "Su
+  inventario no se devolvió" y hay que corregirlo con un ingreso manual.
+- **Los cambios de cuentas bancarias no avisan por correo**, solo quedan en el
+  historial. Los avisos por correo dependen del proveedor SMTP (con Gmail, unos
+  500 al día).
+- **`smtp.json` guarda la contraseña en texto plano**, igual que `config.json`:
+  con permisos 600, fuera de git y en los respaldos cifrados, pero legible por
+  quien tenga acceso al servidor.
+- **Los reportes de ventas no cuentan el envío como ingreso aparte:** el total
+  de un pedido lo incluye, pero las ventas por producto no.
 - **Miniaturas.** La tienda y la administración muestran la foto completa
   (reducida a 1200 px al subirla) incluso en miniaturas de 44 px. Es aceptable
   hoy, pero generar miniaturas de verdad reduciría mucho el peso de las
@@ -1000,12 +1430,23 @@ go test ./...
   productos a preparar por pedido (ya hay todo lo necesario en
   `pedido_items` — producto, cantidad, y acceso a sus fotos), botones para
   avanzar `estado` (`pagado` → `preparando` → `listo` → `entregado`).
+- **Pasar a `manualidadescristal.com`**: cuando el inventario esté cargado, apuntar
+  el dominio principal a la tienda (en lugar de la página "En construcción"),
+  poner la dirección pública en Correo y cambiar `-UrlPublica` del despliegue.
+  Antes conviene proteger `/admin` con Cloudflare Access, restringir el acceso SSH
+  y avisar cuando falle un respaldo.
 - **Tienda — Fase 3 (pasarela real)**: reemplazar `pasarela.BaseURL()`
   (`internal/pasarela/cliente.go`) por la URL de un proveedor real — el
   contrato (`Cobrar`, `RespuestaCobro`, `ErrNoDisponible`) ya está pensado
   para eso, y `TiendaCheckoutConfirmar` no debería necesitar cambios.
   Candidato a evaluar cuando llegue el momento: proveedores con soporte en
   Guatemala/Centroamérica.
+- **Idempotencia de los cobros con tarjeta**: parte de la Fase 3. Una llave de
+  operación única por intento hacia el proveedor, un identificador generado por
+  el navegador para el primer envío, tratar un timeout como "incierto" y
+  consultarlo antes de permitir otro intento, y un índice único sobre la
+  referencia del proveedor.
+- **Avisar por correo cuando cambia una cuenta bancaria**, además del historial.
 - **Validación de NIT con SAT**: una llamada de validación en el checkout
   antes de confirmar el pedido; el campo `cliente_nit` ya existe.
 - **Backend de almacenamiento S3-compatible**: solo si algún día se abandona la

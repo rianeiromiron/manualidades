@@ -12,7 +12,10 @@ Complementa a [RESPALDOS.md](RESPALDOS.md) (cómo funcionan los respaldos) y a
 
 - La base de datos completa (productos, categorías, usuarios, pedidos, etc.).
 - Las fotos (`/opt/manualidades/media`).
-- `admin.json` y `config.json` (usuario administrador raíz y acceso a Postgres).
+- Los comprobantes de transferencia (`/opt/manualidades/comprobantes`), si algún
+  cliente ya subió alguno.
+- `admin.json` y `config.json` (usuario administrador raíz y acceso a Postgres), y
+  `smtp.json` (servidor de correo saliente) si se configuró el correo.
 
 No incluye el programa en sí: el binario y `web/` se vuelven a instalar con
 `/desplegar`.
@@ -119,8 +122,9 @@ sudo ls -lh /var/tmp/restaurar/var/backups/manualidades/manualidades.dump
 sudo ls /var/tmp/restaurar/opt/manualidades/
 ```
 
-Debes ver el archivo `.dump` con un tamaño razonable y las carpetas `media`,
-más `admin.json` y `config.json`.
+Debes ver el archivo `.dump` con un tamaño razonable y las carpetas `media` (y
+`comprobantes`, si ya hay), más `admin.json`, `config.json` y, si configuraste el
+correo, `smtp.json`.
 
 ### Paso 4. Restaurar la base de datos
 
@@ -143,11 +147,16 @@ sudo -u postgres psql -d manualidades -c "select count(*) from productos;"
 
 ```bash
 sudo rsync -a /var/tmp/restaurar/opt/manualidades/media/ /opt/manualidades/media/
+# comprobantes/ y smtp.json solo existen si ya se usaron; si no están, se omiten sin error:
+sudo rsync -a /var/tmp/restaurar/opt/manualidades/comprobantes/ /opt/manualidades/comprobantes/ 2>/dev/null || true
+sudo cp /var/tmp/restaurar/opt/manualidades/smtp.json /opt/manualidades/smtp.json 2>/dev/null || true
 sudo cp /var/tmp/restaurar/opt/manualidades/admin.json  /opt/manualidades/admin.json
 sudo cp /var/tmp/restaurar/opt/manualidades/config.json /opt/manualidades/config.json
 sudo chown -R manualidades:manualidades /opt/manualidades/media \
      /opt/manualidades/admin.json /opt/manualidades/config.json
 sudo chmod 600 /opt/manualidades/admin.json /opt/manualidades/config.json
+sudo chown -R manualidades:manualidades /opt/manualidades/comprobantes 2>/dev/null || true
+sudo chown manualidades:manualidades /opt/manualidades/smtp.json 2>/dev/null && sudo chmod 600 /opt/manualidades/smtp.json || true
 ```
 
 ### Paso 6. Arrancar y limpiar

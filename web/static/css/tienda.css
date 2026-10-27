@@ -276,7 +276,7 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
   aspect-ratio: 1;
   border-radius: var(--t-radius);
   overflow: hidden;
-  background: var(--t-marco-suave);
+  background: #f6f6f6; /* gris de fondo de las fotos de producto, para que no se vea un recuadro */
   box-shadow: var(--t-shadow-sm);
   margin-bottom: 12px;
 }

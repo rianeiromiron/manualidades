@@ -273,14 +273,13 @@ a { color: var(--t-acento-oscuro); text-decoration: none; }
   padding: 20px 0 40px;
 }
 .t-galeria-principal {
-  aspect-ratio: 1;
   border-radius: var(--t-radius);
   overflow: hidden;
-  background: #f6f6f6; /* gris de fondo de las fotos de producto, para que no se vea un recuadro */
   box-shadow: var(--t-shadow-sm);
   margin-bottom: 12px;
 }
-.t-galeria-principal img { width: 100%; height: 100%; object-fit: contain; }
+/* El contenedor toma el alto de la foto: sin franjas laterales de otro color. */
+.t-galeria-principal img { display: block; width: 100%; height: auto; }
 .t-galeria-mini { display: flex; gap: 10px; flex-wrap: wrap; }
 .t-galeria-mini img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 10px;

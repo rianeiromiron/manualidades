@@ -5,6 +5,24 @@
   <p class="lead">Agrupan los productos del catálogo.</p>
 </section>
 
+<section class="panel panel-narrow">
+  <h3>Nueva categoría</h3>
+  <form method="post" action="/admin/mantenimiento/inventario/categorias" class="form-grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="span-2">
+      <span>Nombre</span>
+      <input type="text" name="nombre" placeholder="Ej. Tejidos" required>
+    </label>
+    <label class="span-2">
+      <span>Descripción</span>
+      <input type="text" name="descripcion" placeholder="Opcional">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Crear categoría</button>
+    </div>
+  </form>
+</section>
+
 <section class="panel">
   {{if .Categorias}}
   <table class="data-table">
@@ -29,25 +47,7 @@
     </tbody>
   </table>
   {{else}}
-  <p class="empty-hint">Todavía no hay categorías. Crea la primera abajo.</p>
+  <p class="empty-hint">Todavía no hay categorías. Crea la primera arriba.</p>
   {{end}}
-</section>
-
-<section class="panel panel-narrow">
-  <h3>Nueva categoría</h3>
-  <form method="post" action="/admin/mantenimiento/inventario/categorias" class="form-grid">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label class="span-2">
-      <span>Nombre</span>
-      <input type="text" name="nombre" placeholder="Ej. Tejidos" required>
-    </label>
-    <label class="span-2">
-      <span>Descripción</span>
-      <input type="text" name="descripcion" placeholder="Opcional">
-    </label>
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Crear categoría</button>
-    </div>
-  </form>
 </section>
 {{end}}

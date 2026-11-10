@@ -942,3 +942,6 @@ code {
 .revision { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line, #d8cfc4); display: grid; gap: 14px; }
 .revision form { margin: 0; }
 .revision-rechazo { max-width: 560px; }
+
+.dialogo-existencia { max-width: 420px; border: 1px solid var(--border, #ccc); border-radius: 8px; padding: 1.25rem; }
+.dialogo-existencia::backdrop { background: rgba(0, 0, 0, .4); }

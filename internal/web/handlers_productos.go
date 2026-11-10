@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -58,6 +60,18 @@ func (a *App) ProductoNuevo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Existencia inicial opcional: se registra como un ingreso.
+	if txt := strings.TrimSpace(r.FormValue("existencia_inicial")); txt != "" {
+		cant, err := strconv.ParseFloat(txt, 64)
+		if err == nil && cant > 0 {
+			hoy, _ := time.Parse("2006-01-02", time.Now().Format("2006-01-02"))
+			if err := inventario.CreateMovimiento(conn, id, "ingreso", cant, "INGRESO INICIAL", false, 0, hoy); err != nil {
+				http.Redirect(w, r, "/admin/mantenimiento/inventario/productos/"+strconv.Itoa(id)+"/editar?inicialError=1", http.StatusSeeOther)
+				return
+			}
+		}
+	}
+
 	if err := a.guardarFotos(conn, r, id); err != nil {
 		http.Redirect(w, r, "/admin/mantenimiento/inventario/productos/"+strconv.Itoa(id)+"/editar?fotoError=1", http.StatusSeeOther)
 		return
@@ -110,6 +124,9 @@ func (a *App) ProductoEditar(w http.ResponseWriter, r *http.Request) {
 	fotos, _ := inventario.ListFotos(conn, id)
 
 	msg := ""
+	if r.URL.Query().Get("inicialError") != "" {
+		msg = "El producto se guardó, pero no se pudo registrar la existencia inicial. Regístrala como un ingreso en Movimientos."
+	}
 	if r.URL.Query().Get("fotoError") != "" {
 		msg = "El producto se guardó, pero una o más fotos no se pudieron subir. Usa imágenes JPG, PNG o WebP de hasta 10 MB."
 	}

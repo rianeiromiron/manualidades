@@ -51,12 +51,32 @@
       <input type="file" name="fotos" accept="image/*" multiple>
     </label>
 
+    {{if .EsNuevo}}<input type="hidden" name="existencia_inicial" id="existenciaInicial" value="">{{end}}
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Guardar producto</button>
       <a href="/admin/mantenimiento/inventario/productos" class="btn btn-ghost">Cancelar</a>
     </div>
   </form>
 </section>
+
+{{if .EsNuevo}}
+<dialog id="dlgExistencia" class="dialogo-existencia">
+  <form method="dialog">
+    <h3>Existencia inicial</h3>
+    <p>¿Deseas registrar la existencia actual de este artículo? Se guardará como un ingreso: INGRESO INICIAL.</p>
+    <label>
+      <span>Cantidad</span>
+      <input type="number" step="any" min="0" id="dlgCantidad" autocomplete="off">
+    </label>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="dlgSi">Sí, registrar</button>
+      <button type="button" class="btn btn-ghost" id="dlgNo">No, guardar sin existencia</button>
+      <button type="button" class="btn btn-ghost" id="dlgCancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+<script src="/static/js/admin-producto-form.js"></script>
+{{end}}
 
 {{if .Fotos}}
 <section class="panel panel-narrow">

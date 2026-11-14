@@ -80,6 +80,78 @@ func TestMigrarNoReiniciaElCostoYAgregaElCampoAUnaBaseAntigua(t *testing.T) {
 	}
 }
 
+func TestLaCascadaNaceApagadaConValoresPorOmision(t *testing.T) {
+	conn := testdb.Nueva(t, Migrate)
+	c, err := Get(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.CascadaActiva || c.CascadaOpacidad != 90 || c.CascadaVelocidad != 5 || c.CascadaCantidad != 2 {
+		t.Fatalf("cascada por omisión = %+v; quiero apagada, 90, 5 y 2", c)
+	}
+}
+
+func TestGuardarLosAjustesDeLaCascada(t *testing.T) {
+	conn := testdb.Nueva(t, Migrate)
+	c, _ := Get(conn)
+	c.CascadaActiva, c.CascadaOpacidad, c.CascadaVelocidad, c.CascadaCantidad = true, 55, 8, 3
+	if err := Save(conn, c); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := Get(conn)
+	if !g.CascadaActiva || g.CascadaOpacidad != 55 || g.CascadaVelocidad != 8 || g.CascadaCantidad != 3 {
+		t.Fatalf("guardado = %+v", g)
+	}
+
+	// Los extremos de cada rango son válidos.
+	for _, ok := range [][3]int{{20, 1, 1}, {100, 10, 3}} {
+		c.CascadaOpacidad, c.CascadaVelocidad, c.CascadaCantidad = ok[0], ok[1], ok[2]
+		if err := Save(conn, c); err != nil {
+			t.Errorf("%v debía ser válido: %v", ok, err)
+		}
+	}
+
+	// Fuera de rango se rechaza y no cambia lo guardado.
+	c.CascadaOpacidad, c.CascadaVelocidad, c.CascadaCantidad = 55, 8, 3
+	Save(conn, c)
+	for _, malo := range [][3]int{{19, 8, 3}, {101, 8, 3}, {55, 0, 3}, {55, 11, 3}, {55, 8, 0}, {55, 8, 4}, {0, 0, 0}} {
+		c.CascadaOpacidad, c.CascadaVelocidad, c.CascadaCantidad = malo[0], malo[1], malo[2]
+		if err := Save(conn, c); !errors.Is(err, ErrCascadaInvalida) {
+			t.Errorf("%v: err = %v, quiero ErrCascadaInvalida", malo, err)
+		}
+	}
+	if g, _ := Get(conn); g.CascadaOpacidad != 55 || g.CascadaVelocidad != 8 || g.CascadaCantidad != 3 {
+		t.Fatalf("un guardado inválido cambió la cascada: %+v", g)
+	}
+}
+
+func TestMigrarNoReiniciaLaCascadaYAgregaLosCamposAUnaBaseAntigua(t *testing.T) {
+	conn := testdb.Nueva(t, Migrate)
+	c, _ := Get(conn)
+	c.CascadaActiva, c.CascadaOpacidad = true, 40
+	Save(conn, c)
+	if err := Migrate(conn); err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := Get(conn); !g.CascadaActiva || g.CascadaOpacidad != 40 {
+		t.Fatalf("migrar de nuevo cambió la cascada: %+v", g)
+	}
+
+	// Una base creada antes de la cascada la recibe apagada y con los valores base.
+	for _, col := range []string{"cascada_activa", "cascada_opacidad", "cascada_velocidad", "cascada_cantidad"} {
+		if _, err := conn.Exec(`ALTER TABLE config_sitio DROP COLUMN ` + col); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(conn); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Get(conn)
+	if err != nil || g.CascadaActiva || g.CascadaOpacidad != 90 || g.CascadaVelocidad != 5 || g.CascadaCantidad != 2 {
+		t.Fatalf("base antigua: %+v, err = %v", g, err)
+	}
+}
+
 func TestLasFormasDePagoNacenActivasYSePuedenCambiar(t *testing.T) {
 	conn := testdb.Nueva(t, Migrate)
 	lista, err := ListFormasPago(conn)

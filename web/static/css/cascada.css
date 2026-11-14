@@ -1,0 +1,56 @@
+/* Fondo animado: cascada infinita de pinceles y frascos de pintura.
+
+   Lo usan la tienda (layout_tienda.html, solo si se activa en Admin > Sitio web)
+   y la vista previa de esa pantalla de admin.
+
+   Las figuras las dibuja web/static/js/cascada.js con una distribución al azar
+   (sin patrón repetido y sin traslapes). Este archivo solo las mueve y las
+   mantiene detrás del contenido.
+
+   Variables:
+     --cascada-opacidad   porcentaje 20-100 con que se ven las figuras (la pone la plantilla)
+     --cascada-alto       altura de una distribución completa (la pone el script)
+     --cascada-duracion   lo que tarda en caer esa altura (la pone el script) */
+
+.fondo-cascada {
+  position: fixed;
+  inset: 0;
+  z-index: -1; /* detrás de todo el contenido, encima del color de fondo */
+  overflow: hidden;
+  pointer-events: none;
+  opacity: calc(var(--cascada-opacidad, 90) / 100);
+}
+
+/* Mide dos alturas: la copia de arriba (fuera de pantalla) y la que se ve. Al
+   bajar una altura completa la de arriba ocupa el lugar de la otra, y el
+   movimiento recomienza sin que se note el salto. */
+.cascada-capa {
+  position: absolute;
+  left: 0;
+  top: calc(var(--cascada-alto, 0px) * -1);
+  width: 100%;
+  height: calc(var(--cascada-alto, 0px) * 2);
+  animation: caerCascada var(--cascada-duracion, 20s) linear infinite;
+  will-change: transform;
+}
+.cascada-capa svg { display: block; }
+
+@keyframes caerCascada {
+  from { transform: translateY(0); }
+  to   { transform: translateY(var(--cascada-alto, 0px)); }
+}
+
+/* Con la cascada activa el fondo lo pinta el contenedor fijo, no el body:
+   un body con fondo propio taparía la cascada. */
+body.con-cascada { background: transparent; }
+
+/* Quien pide al sistema "reducir movimiento" ve las figuras quietas. */
+@media (prefers-reduced-motion: reduce) {
+  .cascada-capa { animation: none; }
+}
+
+/* Vista previa dentro del admin: la misma cascada, pero en una caja. */
+.fondo-cascada.cascada-previa {
+  position: absolute;
+  z-index: 0;
+}

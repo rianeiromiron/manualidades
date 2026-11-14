@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:opsz,wght@5..1200,500;5..1200,600;5..1200,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/tienda.css">
+  {{if .Sitio.CascadaActiva}}<link rel="stylesheet" href="/static/css/cascada.css">
+  <script src="/static/js/cascada.js" defer></script>{{end}}
   <script src="/static/js/carrito.js"></script>
   <style>
     :root {
@@ -16,10 +18,14 @@
       --t-texto: {{.Sitio.ColorTexto}};
       --t-marco: {{.Sitio.ColorMarco}};
       --t-acento: {{.Sitio.ColorAcento}};
+      {{if .Sitio.CascadaActiva}}--cascada-opacidad: {{.Sitio.CascadaOpacidad}};{{end}}
     }
   </style>
 </head>
-<body>
+<body{{if .Sitio.CascadaActiva}} class="con-cascada"{{end}}>
+  {{if .Sitio.CascadaActiva}}
+  <div class="fondo-cascada" data-cantidad="{{.Sitio.CascadaCantidad}}" data-velocidad="{{.Sitio.CascadaVelocidad}}" aria-hidden="true"></div>
+  {{end}}
   <header class="t-header">
     <a class="t-brand" href="/">
       {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.Sitio.NombreNegocio}}" class="t-logo">{{end}}

@@ -1,4 +1,5 @@
 {{define "content"}}
+<link rel="stylesheet" href="/static/css/cascada.css">
 <section class="page-head">
   <p class="eyebrow">Mantenimiento 3</p>
   <h1>Sitio web</h1>
@@ -91,11 +92,47 @@
       </div>
     </div>
 
+    <div class="span-2 cascada-bloque" id="cascadaBloque">
+      <h3>Fondo animado (cascada)</h3>
+      <label class="check-row">
+        <input type="checkbox" name="cascada_activa" id="cascadaActiva" value="1"{{if .Config.CascadaActiva}} checked{{end}}>
+        <span>Mostrar la cascada de pinceles y frascos de pintura en la tienda</span>
+      </label>
+      <small class="cell-muted">Si está apagada, la tienda se ve como siempre. Los ajustes de abajo se guardan aunque esté apagada.</small>
+
+      <div class="cascada-ajustes">
+        <label>
+          <span>Opacidad de las figuras: <strong id="cascadaOpacidadValor">{{.Config.CascadaOpacidad}}%</strong></span>
+          <input type="range" name="cascada_opacidad" id="cascadaOpacidad" min="20" max="100" step="5" value="{{.Config.CascadaOpacidad}}">
+          <small class="cell-muted">Más baja = más tenue, para que el texto se lea mejor.</small>
+        </label>
+        <label>
+          <span>Velocidad de caída: <strong id="cascadaVelocidadValor">{{.Config.CascadaVelocidad}}</strong> de 10</span>
+          <input type="range" name="cascada_velocidad" id="cascadaVelocidad" min="1" max="10" step="1" value="{{.Config.CascadaVelocidad}}">
+          <small class="cell-muted">1 = muy lenta, 10 = rápida.</small>
+        </label>
+        <label>
+          <span>Cantidad de figuras</span>
+          <select name="cascada_cantidad" id="cascadaCantidad">
+            <option value="1"{{if eq .Config.CascadaCantidad 1}} selected{{end}}>Pocas figuras</option>
+            <option value="2"{{if eq .Config.CascadaCantidad 2}} selected{{end}}>Normal</option>
+            <option value="3"{{if eq .Config.CascadaCantidad 3}} selected{{end}}>Bastantes figuras</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="cell-muted" style="margin:10px 0 8px;">Vista previa de la cascada</p>
+      <div class="cascada-previa-caja" id="cascadaPreviaCaja">
+        <div class="fondo-cascada cascada-previa" id="cascadaPrevia" data-cantidad="{{.Config.CascadaCantidad}}" data-velocidad="{{.Config.CascadaVelocidad}}" aria-hidden="true"></div>
+      </div>
+    </div>
+
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Guardar configuración</button>
     </div>
   </form>
 </section>
 
+<script src="/static/js/cascada.js"></script>
 <script src="/static/js/admin-sitio.js"></script>
 {{end}}

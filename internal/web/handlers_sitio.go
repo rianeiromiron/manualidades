@@ -57,6 +57,29 @@ func (a *App) SitioConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.CostoEnvio = costo
 	}
 
+	// La cascada: un checkbox sin marcar no se envía, por eso "activa" es solo
+	// "vino en el formulario". Los números, si faltan, conservan lo guardado.
+	cfg.CascadaActiva = r.FormValue("cascada_activa") != ""
+	for _, campo := range []struct {
+		nombre  string
+		destino *int
+		actual  int
+	}{
+		{"cascada_opacidad", &cfg.CascadaOpacidad, actual.CascadaOpacidad},
+		{"cascada_velocidad", &cfg.CascadaVelocidad, actual.CascadaVelocidad},
+		{"cascada_cantidad", &cfg.CascadaCantidad, actual.CascadaCantidad},
+	} {
+		*campo.destino = campo.actual
+		if v := strings.TrimSpace(r.FormValue(campo.nombre)); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				a.renderSitioConfig(w, r, conn, "Los ajustes de la cascada deben ser números enteros.", "error")
+				return
+			}
+			*campo.destino = n
+		}
+	}
+
 	if err := sitio.Save(conn, cfg); err != nil {
 		a.renderSitioConfig(w, r, conn, "No se pudo guardar: "+err.Error(), "error")
 		return

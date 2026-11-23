@@ -1350,7 +1350,8 @@ go test ./...
   desarrollo, pero detrás de Cloudflare o Caddy todos los visitantes
   parecerían una sola IP y 5 logins fallidos bloquearían a todos. Esto solo es
   seguro si el puerto de la app no es accesible desde fuera (escuchar en
-  localhost o cerrarlo en el firewall) y, si Caddy confía en
+  localhost o cerrarlo en el firewall; por defecto escucha solo en
+  `127.0.0.1:8090`, y `LISTEN_ADDR` lo cambia) y, si Caddy confía en
   `CF-Connecting-IP`, si solo Cloudflare puede llegar a Caddy.
 - **Datos de tarjeta en claro por el servidor.** Van del navegador a
   `/checkout/confirmar` y de ahí a la pasarela. No se guardan ni se loguean

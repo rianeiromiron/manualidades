@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"manualidades/internal/config"
@@ -63,7 +64,14 @@ func main() {
 
 	r := web.NewRouter(app)
 
-	addr := ":8090"
+	// Solo en la interfaz local: al mundo lo expone el proxy (Caddy). Escuchar en
+	// todas las interfaces dejaría la app alcanzable sin pasar por el proxy si el
+	// firewall fallara, y con TRUSTED_PROXIES eso permite falsear la IP del
+	// cliente. LISTEN_ADDR permite cambiarlo (p. ej. ":8090" en un contenedor).
+	addr := "127.0.0.1:8090"
+	if v := os.Getenv("LISTEN_ADDR"); v != "" {
+		addr = v
+	}
 	// http.ListenAndServe(addr, r) a secas no pone ningún límite de tiempo:
 	// una conexión que manda el header o el body a medio byte por segundo
 	// (o que nunca lo termina) se queda abierta indefinidamente, agotando
@@ -80,7 +88,7 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Printf("manualidades escuchando en http://localhost%s", addr)
+	log.Printf("manualidades escuchando en http://%s", addr)
 	log.Fatal(srv.ListenAndServe())
 }
 

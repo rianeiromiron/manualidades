@@ -2,10 +2,28 @@
 // inicial; si sí, la cantidad viaja en "existencia_inicial" y el servidor la
 // registra como un ingreso (INGRESO INICIAL).
 (function () {
+  var form = document.getElementById('formProducto');
+  if (!form) return;
+  var guardar = document.getElementById('btnGuardar');
+  var enviado = false;
+
+  // Al volver con "atrás" el navegador puede restaurar el botón deshabilitado.
+  window.addEventListener('pageshow', function () {
+    enviado = false;
+    guardar.disabled = false;
+  });
+
   var dlg = document.getElementById('dlgExistencia');
   var campo = document.getElementById('existenciaInicial');
-  if (!dlg || !campo || typeof dlg.showModal !== 'function') return;
-  var form = campo.form;
+  if (!dlg || !campo || typeof dlg.showModal !== 'function') {
+    // Edición: solo evitar el doble envío.
+    form.addEventListener('submit', function (e) {
+      if (enviado) { e.preventDefault(); return; }
+      enviado = true;
+      guardar.disabled = true;
+    });
+    return;
+  }
   var cantidad = document.getElementById('dlgCantidad');
   var confirmado = false;
 
@@ -13,12 +31,18 @@
     if (confirmado) return;
     e.preventDefault();
     cantidad.value = '';
-    dlg.showModal();
+    if (!dlg.open) dlg.showModal();
     cantidad.focus();
   });
 
   function enviar() {
+    if (enviado) return;
+    enviado = true;
     confirmado = true;
+    guardar.disabled = true;
+    ['dlgSi', 'dlgNo', 'dlgCancelar'].forEach(function (id) {
+      document.getElementById(id).disabled = true;
+    });
     dlg.close();
     form.submit();
   }

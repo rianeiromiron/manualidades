@@ -9,7 +9,7 @@
 {{end}}
 
 <section class="panel">
-  <form method="post" action="{{.FormAction}}" enctype="multipart/form-data" class="form-grid">
+  <form method="post" action="{{.FormAction}}" enctype="multipart/form-data" class="form-grid" id="formProducto">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="span-2">
       <span>Nombre</span>
@@ -53,7 +53,7 @@
 
     {{if .EsNuevo}}<input type="hidden" name="existencia_inicial" id="existenciaInicial" value="">{{end}}
     <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Guardar producto</button>
+      <button type="submit" class="btn btn-primary" id="btnGuardar">Guardar producto</button>
       <a href="/admin/mantenimiento/inventario/productos" class="btn btn-ghost">Cancelar</a>
     </div>
   </form>
@@ -75,8 +75,8 @@
     </div>
   </form>
 </dialog>
-<script src="/static/js/admin-producto-form.js"></script>
 {{end}}
+<script src="/static/js/admin-producto-form.js"></script>
 
 {{if .Fotos}}
 <section class="panel panel-narrow">

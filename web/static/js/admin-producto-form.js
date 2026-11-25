@@ -11,6 +11,7 @@
   window.addEventListener('pageshow', function () {
     enviado = false;
     guardar.disabled = false;
+    guardar.textContent = "Guardar producto";
   });
 
   var dlg = document.getElementById('dlgExistencia');
@@ -21,6 +22,7 @@
       if (enviado) { e.preventDefault(); return; }
       enviado = true;
       guardar.disabled = true;
+      guardar.textContent = "Guardando…";
     });
     return;
   }
@@ -40,6 +42,7 @@
     enviado = true;
     confirmado = true;
     guardar.disabled = true;
+    guardar.textContent = "Guardando…";
     ['dlgSi', 'dlgNo', 'dlgCancelar'].forEach(function (id) {
       document.getElementById(id).disabled = true;
     });

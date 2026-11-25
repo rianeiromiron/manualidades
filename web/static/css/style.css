@@ -320,6 +320,7 @@ code {
   transition: transform 0.12s ease, background 0.15s ease;
 }
 .btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn-primary {
   background: var(--terracotta);
   color: var(--paper);
